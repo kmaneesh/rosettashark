@@ -1,8 +1,8 @@
 
-# 🦈 RosettaShark  
+# 🦈 reShark  
 Autonomous Protocol Archaeology Lab
 
-RosettaShark is an open-source system for discovering how unknown network protocols work — directly from PCAP files.
+reShark is an open-source system for discovering how unknown network protocols work — directly from PCAP files.
 
 It treats network traffic as a language and reconstructs its grammar through statistics, hypothesis testing, and validation.
 
@@ -35,5 +35,5 @@ Dream Brain – vector similarity memory
 
 ## Open Core
 
-RosettaShark is open-source for labs and tooling.  
+reShark is open-source for labs and tooling.  
 Extracted real-world protocol grammars remain private.
