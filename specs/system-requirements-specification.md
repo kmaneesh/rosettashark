@@ -284,7 +284,7 @@ reShark reconstructs undocumented network protocol specifications from PCAP file
 
 **REQ-MAIN-001**: Code SHALL follow PEP 8 style guidelines (Python).
 
-**REQ-MAIN-002**: All Faculties SHALL have unit tests achieving >80% coverage.
+**REQ-MAIN-002**: All Scopes SHALL have unit tests achieving >80% coverage.
 
 **REQ-MAIN-003**: System SHALL use type hints for all Python functions.
 
@@ -332,7 +332,7 @@ reShark reconstructs undocumented network protocol specifications from PCAP file
 
 **REQ-COMP-001**: System SHALL adhere to reShark Constitution v2.0.0.
 
-**REQ-COMP-002**: All Faculties SHALL respect memory boundaries (Constitution Section 3).
+**REQ-COMP-002**: All Scopes SHALL respect memory boundaries (Constitution Section 3).
 
 **REQ-COMP-003**: Validation SHALL follow requirements in Constitution Section 4.
 
@@ -392,7 +392,7 @@ reShark reconstructs undocumented network protocol specifications from PCAP file
 
 ### 6.2 External Interfaces
 
-**REQ-EXT-001**: MCP servers expose tools to Faculties.
+**REQ-EXT-001**: MCP servers expose tools to Scopes.
 
 **REQ-EXT-002**: File system API for Notebook/Rulebook/Cookbook access.
 
@@ -402,7 +402,7 @@ reShark reconstructs undocumented network protocol specifications from PCAP file
 
 ### 6.3 Internal Interfaces
 
-**REQ-INT-001**: Faculties communicate via shared Notebook state.
+**REQ-INT-001**: Scopes communicate via shared Notebook state.
 
 **REQ-INT-002**: Observer outputs conform to defined JSON schema.
 
