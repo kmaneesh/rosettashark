@@ -499,38 +499,27 @@ poetry run python scripts/validate_hitl_setup.py
 
 ---
 
-### Week 3: Memory System
+### Week 3: Books System (Knowledge Infrastructure)
 
 #### Objectives
-- Scope base class implemented
-- Notebook read/write operations functional
-- Rulebook structure established
-- Cookbook initial content created
+- Books directory structure established and documented
+- Agent base class implemented with Books access
+- Notebook session management operational
+- Skills markdown template created
+- Initial skill documentation written
 
 #### Tasks
 
-**Day 1-2: Scope Base Class**
+**Day 1-2: Agent Base Class and Books Access**
 
-1. **Implement Base Class**
+1. **Implement Agent Base Class**
    ```python
-   # reshark/scopes/__init__.py
-   from .base import Scope
-   from .observer import Observer
-   from .theorist import Theorist
-   from .validator import Validator
-   from .archivist import Archivist
-   
-   __all__ = ["Scope", "Observer", "Theorist", "Validator", "Archivist"]
-   ```
-
-   ```python
-   # reshark/scopes/base.py
+   # reshark/agents/base.py
    """
-   Base class for all reShark Scopes.
-   Enforces Constitutional constraints and memory boundaries.
+   Base class for all reShark Agents.
    
-   Per Constitution Section 5: Scopes are licensed agent roles
-   with bounded authority over specific analysis domains.
+   Agents are autonomous components that perform specialized analysis tasks.
+   They access knowledge through the Books system and invoke Tools for execution.
    """
    
    from abc import ABC, abstractmethod
@@ -542,45 +531,52 @@ poetry run python scripts/validate_hitl_setup.py
    
    logger = logging.getLogger(__name__)
    
-   class ScopeError(Exception):
-       """Base exception for Scope errors."""
+   class AgentError(Exception):
+       """Base exception for Agent errors."""
        pass
    
-   class MemoryBoundaryViolation(ScopeError):
-       """Raised when Scope attempts unauthorized memory access."""
-       pass
-   
-   class Scope(ABC):
+   class Agent(ABC):
        """
-       Base class for all reShark Scopes.
+       Base class for all reShark Agents.
        
        Constitutional Requirements:
-       - Scopes MUST declare authority scope
-       - Scopes MUST log evidence for all claims
-       - Scopes MUST respect memory boundaries
-       - Scopes MUST NOT maintain hidden state
+       - Agents MUST document their analysis steps
+       - Agents MUST log evidence for all findings
+       - Agents MUST reference skills when following methodologies
+       - Agents operate in both HITL and Autonomous modes
        """
        
        def __init__(
            self,
-           notebook_path: Path,
-           rulebook_path: Path,
-           cookbook_path: Path
+           books_path: Path,
+           tools_registry: Optional[Any] = None
        ):
-           self.notebook_path = Path(notebook_path)
-           self.rulebook_path = Path(rulebook_path)
-           self.cookbook_path = Path(cookbook_path)
+           """
+           Initialize agent with access to Books.
+           
+           Args:
+               books_path: Root path to books/ directory
+               tools_registry: Optional tools registry for invoking external tools
+           """
+           self.books_path = Path(books_path)
+           self.tools_registry = tools_registry
            self.session_id: Optional[str] = None
            
+           # Books paths
+           self.notebook_path = self.books_path / "notebook"
+           self.rulebook_path = self.books_path / "rulebook"
+           self.cookbook_path = self.books_path / "cookbook"
+           self.skills_path = Path("skills")  # Skills are in workspace root
+           
            # Verify paths exist
-           self.notebook_path.mkdir(parents=True, exist_ok=True)
-           self.rulebook_path.mkdir(parents=True, exist_ok=True)
-           self.cookbook_path.mkdir(parents=True, exist_ok=True)
+           for path in [self.notebook_path, self.rulebook_path, 
+                       self.cookbook_path]:
+               path.mkdir(parents=True, exist_ok=True)
        
        @abstractmethod
        def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
            """
-           Main execution method for Scope logic.
+           Main execution method for Agent logic.
            
            Args:
                inputs: Dictionary of input parameters
@@ -589,71 +585,40 @@ poetry run python scripts/validate_hitl_setup.py
                Dictionary of results
                
            Raises:
-               ScopeError: If execution fails
+               AgentError: If execution fails
            """
            pass
        
        @property
        @abstractmethod
-       def authority_scope(self) -> str:
+       def agent_type(self) -> str:
            """
-           Return description of Scope's authority domain.
+           Return agent type/category.
            
-           Per Constitution Section 5: Each Scope has a declared
-           scope of authority and MUST NOT exceed it.
+           Returns one of: interpreters, orchestration, validation, scopes
            """
            pass
        
-       # Notebook operations (read/write allowed for all Scopes)
-       
-       def read_notebook(self, key: str) -> Optional[Any]:
-           """
-           Read data from Notebook.
-           
-           Args:
-               key: Data key (becomes filename without extension)
-               
-           Returns:
-               Data if exists, None otherwise
-           """
-           if not self.session_id:
-               raise ScopeError("session_id not set")
-           
-           notebook_file = (
-               self.notebook_path / self.session_id / f"{key}.json"
-           )
-           
-           if not notebook_file.exists():
-               logger.debug(f"Notebook key not found: {key}")
-               return None
-           
-           try:
-               with open(notebook_file) as f:
-                   data = json.load(f)
-               logger.info(f"Read from Notebook: {key}")
-               return data
-           except json.JSONDecodeError as e:
-               raise ScopeError(f"Invalid JSON in Notebook: {key}") from e
+       # Notebook operations (read/write for session data)
        
        def write_notebook(self, key: str, data: Any) -> None:
            """
-           Write data to Notebook with timestamp and scope attribution.
+           Write data to Notebook for current session.
            
            Args:
                key: Data key (becomes filename)
                data: Data to write (must be JSON-serializable)
-               
-           Per Constitution Section 3.1: Notebook is short-term working memory.
            """
            if not self.session_id:
-               raise ScopeError("session_id not set")
+               raise AgentError("session_id not set")
            
-           session_dir = self.notebook_path / self.session_id
+           session_dir = self.notebook_path / "sessions" / self.session_id
            session_dir.mkdir(parents=True, exist_ok=True)
            
            entry = {
                "timestamp": datetime.utcnow().isoformat(),
-               "scope": self.__class__.__name__,
+               "agent": self.__class__.__name__,
+               "agent_type": self.agent_type,
                "data": data
            }
            
@@ -664,385 +629,1135 @@ poetry run python scripts/validate_hitl_setup.py
                    json.dump(entry, f, indent=2)
                logger.info(f"Wrote to Notebook: {key}")
            except TypeError as e:
-               raise ScopeError(f"Data not JSON-serializable: {key}") from e
+               raise AgentError(f"Data not JSON-serializable: {key}") from e
        
-       # Rulebook operations (read-only except for Archivist)
-       
-       def read_rulebook(self, grammar_name: str) -> Optional[str]:
+       def read_notebook(self, key: str) -> Optional[Any]:
            """
-           Read grammar from Rulebook (read-only).
+           Read data from Notebook for current session.
            
            Args:
-               grammar_name: Name of grammar (without .py extension)
+               key: Data key
                
            Returns:
-               Grammar code if exists, None otherwise
-               
-           Per Constitution Section 3.2: Rulebook contains validated
-           protocol truth. Only Archivist may write.
+               Data if exists, None otherwise
            """
-           grammar_file = (
-               self.rulebook_path / "grammars" / f"{grammar_name}.py"
+           if not self.session_id:
+               raise AgentError("session_id not set")
+           
+           notebook_file = (
+               self.notebook_path / "sessions" / self.session_id / f"{key}.json"
            )
            
-           if not grammar_file.exists():
-               logger.debug(f"Grammar not found: {grammar_name}")
+           if not notebook_file.exists():
+               logger.debug(f"Notebook key not found: {key}")
                return None
            
-           return grammar_file.read_text()
+           try:
+               with open(notebook_file) as f:
+                   return json.load(f)
+           except json.JSONDecodeError as e:
+               raise AgentError(f"Invalid JSON in Notebook: {key}") from e
        
-       def write_rulebook(self, grammar_name: str, code: str) -> None:
-           """
-           Write grammar to Rulebook.
-           
-           Per Constitution Section 5: Only Archivist has authority
-           to write to Rulebook. This method raises MemoryBoundaryViolation
-           for all Scopes except Archivist.
-           """
-           if self.__class__.__name__ != "Archivist":
-               raise MemoryBoundaryViolation(
-                   f"{self.__class__.__name__} cannot write to Rulebook. "
-                   "Only Archivist has this authority per Constitution Section 5."
-               )
-           
-           # If we get here, caller is Archivist
-           grammar_file = (
-               self.rulebook_path / "grammars" / f"{grammar_name}.py"
-           )
-           grammar_file.parent.mkdir(parents=True, exist_ok=True)
-           grammar_file.write_text(code)
-           logger.info(f"Archivist wrote to Rulebook: {grammar_name}")
+       # Rulebook operations (read grammars, write via validation)
        
-       # Cookbook operations (read-only for all)
-       
-       def read_cookbook(self, recipe_name: str) -> Optional[str]:
+       def read_grammar(self, grammar_name: str) -> Optional[str]:
            """
-           Read procedure from Cookbook.
+           Read grammar from Rulebook.
            
            Args:
-               recipe_name: Name of recipe (without extension)
+               grammar_name: Name of grammar file (with or without .ksy extension)
                
            Returns:
-               Recipe content if exists, None otherwise
+               Grammar content if exists, None otherwise
+           """
+           # Support both .ksy (Kaitai Struct) and .py (Python) grammars
+           for ext in ['.ksy', '.py', '']:
+               grammar_name_clean = grammar_name.replace('.ksy', '').replace('.py', '')
+               grammar_file = self.rulebook_path / "grammars" / f"{grammar_name_clean}{ext}"
                
-           Per Constitution Section 3.4: Cookbook contains procedural
-           knowledge and analysis methods.
-           """
-           recipe_file = self.cookbook_path / f"{recipe_name}.md"
+               if grammar_file.exists():
+                   return grammar_file.read_text()
            
-           if not recipe_file.exists():
-               logger.debug(f"Recipe not found: {recipe_name}")
-               return None
-           
-           return recipe_file.read_text()
+           logger.debug(f"Grammar not found: {grammar_name}")
+           return None
        
-       # Evidence logging (required by Constitution Section 2)
+       # Skills operations (read markdown documentation)
        
-       def _log_evidence(self, evidence: Dict[str, Any]) -> None:
+       def read_skill(self, skill_path: str) -> Optional[str]:
            """
-           Log evidence trail for Constitutional compliance.
+           Read skill methodology from markdown file.
            
            Args:
-               evidence: Dictionary describing evidence for claims
+               skill_path: Path to skill (e.g., "protocol/header-parsing.md")
                
-           Per Constitution Section 2: System bears burden of proof
-           for all claims. Evidence must be traceable.
+           Returns:
+               Skill content if exists, None otherwise
+               
+           Skills guide agent behavior by documenting analysis methodologies
+           that LLMs can read and execute.
+           """
+           skill_file = self.skills_path / skill_path
+           
+           if not skill_file.exists():
+               logger.debug(f"Skill not found: {skill_path}")
+               return None
+           
+           logger.info(f"Reading skill: {skill_path}")
+           return skill_file.read_text()
+       
+       # Tool invocation
+       
+       def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Invoke external tool via tools registry.
+           
+           Args:
+               tool_name: Name of tool (e.g., "tshark", "entropy")
+               params: Tool parameters
+               
+           Returns:
+               Tool output
+               
+           Raises:
+               AgentError: If tool invocation fails
+           """
+           if not self.tools_registry:
+               raise AgentError("No tools registry configured")
+           
+           try:
+               return self.tools_registry.invoke(tool_name, params)
+           except Exception as e:
+               raise AgentError(f"Tool invocation failed: {e}") from e
+       
+       # Evidence logging
+       
+       def log_evidence(self, evidence: Dict[str, Any]) -> None:
+           """
+           Log evidence for analysis findings.
+           
+           Args:
+               evidence: Dictionary describing evidence trail
            """
            timestamp = datetime.utcnow().timestamp()
            evidence_key = f"evidence_{timestamp}"
            
            self.write_notebook(evidence_key, {
-               "scope": self.__class__.__name__,
-               "authority_scope": self.authority_scope,
+               "agent": self.__class__.__name__,
+               "agent_type": self.agent_type,
                "evidence": evidence
            })
            
            logger.info(f"Evidence logged: {evidence_key}")
    ```
 
-2. **Unit Tests for Base Class**
+2. **Unit Tests for Agent Base Class**
    ```python
-   # tests/test_scope_base.py
+   # tests/test_agent_base.py
    import pytest
    from pathlib import Path
-   from reshark.scopes.base import (
-       Scope,
-       MemoryBoundaryViolation
-   )
+   from reshark.agents.base import Agent, AgentError
    
-   class MockScope(Scope):
-       """Mock Scope for testing."""
+   class MockAgent(Agent):
+       """Mock agent for testing."""
        
        def execute(self, inputs):
            return {"result": "mock"}
        
        @property
-       def authority_scope(self):
-           return "testing"
+       def agent_type(self):
+           return "interpreters"
    
-   def test_scope_notebook_read_write(tmp_path):
-       """Test Notebook read/write operations."""
-       scope = MockScope(
-           tmp_path / "notebook",
-           tmp_path / "rulebook",
-           tmp_path / "cookbook"
-       )
-       scope.session_id = "test-001"
+   def test_agent_notebook_operations(tmp_path):
+       """Test Notebook read/write."""
+       books_path = tmp_path / "books"
+       agent = MockAgent(books_path)
+       agent.session_id = "test-session-001"
        
        # Write data
-       scope.write_notebook("test_data", {"key": "value"})
+       agent.write_notebook("test_data", {"analysis": "result"})
        
        # Read data back
-       data = scope.read_notebook("test_data")
+       data = agent.read_notebook("test_data")
        assert data is not None
-       assert data["data"]["key"] == "value"
-       assert data["scope"] == "MockScope"
+       assert data["data"]["analysis"] == "result"
+       assert data["agent"] == "MockAgent"
+       assert data["agent_type"] == "interpreters"
    
-   def test_scope_cannot_write_rulebook(tmp_path):
-       """Test non-Archivist Scope cannot write Rulebook."""
-       scope = MockScope(
-           tmp_path / "notebook",
-           tmp_path / "rulebook",
-           tmp_path / "cookbook"
-       )
+   def test_agent_read_skill(tmp_path):
+       """Test reading skill markdown files."""
+       books_path = tmp_path / "books"
+       skills_path = tmp_path / "skills"
+       skills_path.mkdir()
        
-       with pytest.raises(MemoryBoundaryViolation):
-           scope.write_rulebook("test_grammar", "code")
-   
-   def test_scope_can_read_rulebook(tmp_path):
-       """Test Scope can read from Rulebook."""
-       rulebook_path = tmp_path / "rulebook" / "grammars"
-       rulebook_path.mkdir(parents=True)
+       # Create test skill
+       skill_dir = skills_path / "protocol"
+       skill_dir.mkdir()
+       skill_file = skill_dir / "test-skill.md"
+       skill_file.write_text("# Test Skill\n\nMethodology here")
        
-       # Create test grammar
-       grammar_file = rulebook_path / "test.py"
-       grammar_file.write_text("# Test grammar")
+       # Read skill
+       agent = MockAgent(books_path)
+       agent.skills_path = skills_path
        
-       scope = MockScope(
-           tmp_path / "notebook",
-           tmp_path / "rulebook",
-           tmp_path / "cookbook"
-       )
-       
-       content = scope.read_rulebook("test")
-       assert content == "# Test grammar"
-   
-   def test_evidence_logging(tmp_path):
-       """Test evidence is properly logged."""
-       scope = MockScope(
-           tmp_path / "notebook",
-           tmp_path / "rulebook",
-           tmp_path / "cookbook"
-       )
-       scope.session_id = "test-001"
-       
-       scope._log_evidence({
-           "method": "test_method",
-           "observation": "test_observation"
-       })
-       
-       # Verify evidence was written to Notebook
-       session_dir = tmp_path / "notebook" / "test-001"
-       evidence_files = list(session_dir.glob("evidence_*.json"))
-       assert len(evidence_files) > 0
+       content = agent.read_skill("protocol/test-skill.md")
+       assert content is not None
+       assert "Test Skill" in content
    ```
 
-**Day 3: Notebook Structure**
+**Day 3-4: Books Structure and Documentation**
 
-3. **Create Notebook JSON Schemas**
-   ```python
-   # reshark/schemas/notebook.py
-   """
-   JSON schemas for Notebook entries.
-   Ensures consistent data structure across Scopes.
-   """
-   
-   OBSERVATION_SCHEMA = {
-       "type": "object",
-       "required": ["timestamp", "scope", "data"],
-       "properties": {
-           "timestamp": {"type": "string", "format": "date-time"},
-           "scope": {"type": "string", "const": "Observer"},
-           "data": {
-               "type": "object",
-               "required": [
-                   "entropy_map",
-                   "frequency_dist",
-                   "invariants",
-                   "control_bytes"
-               ],
-               "properties": {
-                   "entropy_map": {
-                       "type": "object",
-                       "patternProperties": {
-                           "^[0-9]+$": {"type": "number", "minimum": 0, "maximum": 8}
-                       }
-                   },
-                   "frequency_dist": {"type": "object"},
-                   "invariants": {"type": "array"},
-                   "control_bytes": {"type": "array"}
-               }
-           }
-       }
-   }
-   
-   HYPOTHESIS_SCHEMA = {
-       "type": "object",
-       "required": ["timestamp", "scope", "data"],
-       "properties": {
-           "timestamp": {"type": "string"},
-           "scope": {"type": "string", "const": "Theorist"},
-           "data": {
-               "type": "array",
-               "items": {
-                   "type": "object",
-                   "required": ["type", "claim", "testable", "test_method"],
-                   "properties": {
-                       "type": {"type": "string"},
-                       "claim": {"type": "string"},
-                       "testable": {"type": "boolean"},
-                       "test_method": {"type": "string"},
-                       "parameters": {"type": "object"}
-                   }
-               }
-           }
-       }
-   }
-   
-   VALIDATION_SCHEMA = {
-       "type": "object",
-       "required": ["timestamp", "scope", "data"],
-       "properties": {
-           "timestamp": {"type": "string"},
-           "scope": {"type": "string", "const": "Validator"},
-           "data": {
-               "type": "object",
-               "required": ["validation_results", "passed", "failed"],
-               "properties": {
-                   "validation_results": {"type": "array"},
-                   "passed": {"type": "array"},
-                   "failed": {"type": "array"},
-                   "pcap_count": {"type": "integer", "minimum": 3}
-               }
-           }
-       }
-   }
-   ```
-
-**Day 4-5: Rulebook and Cookbook**
-
-4. **Create Rulebook Structure**
+3. **Create Books README files**
    ```bash
-   # Setup Rulebook directories
-   mkdir -p workspace/rulebook/{grammars,tests}
+   # Notebook README
+   cat > books/notebook/README.md << 'EOF'
+   # Notebook - Session Working Memory
    
-   # Create README
-   cat > workspace/rulebook/README.md << 'EOF'
-   # reShark Rulebook
-   
-   This directory contains validated protocol grammars per Constitution Section 3.2.
+   Short-term working memory for analysis sessions. Organized by session ID.
    
    ## Structure
    
-   - `grammars/` - Executable protocol parsers (Python)
-   - `tests/` - Test suites for grammars (pytest)
+   ```
+   notebook/
+   ├── sessions/
+   │   └── session-YYYYMMDD-HHMMSS/
+   │       ├── observations.json
+   │       ├── hypotheses.json
+   │       ├── evidence_*.json
+   │       └── results.json
+   └── archives/
+       └── session-YYYYMMDD-HHMMSS.tar.gz
+   ```
    
-   ## Promotion Requirements
+   ## Session Lifecycle
    
-   Per Constitution Section 4, a grammar may be promoted here only after:
+   1. Session created with unique ID
+   2. Agents write analysis data during session
+   3. Session archived on completion
+   4. Archives retained for audit trail
    
-   1. Cross-PCAP validation (minimum 3 PCAPs)
-   2. Negative testing passed
-   3. Boundary testing completed
+   ## Data Format
+   
+   All entries are JSON with metadata:
+   ```json
+   {
+     "timestamp": "2026-01-15T10:30:00Z",
+     "agent": "DataInterpreter",
+     "agent_type": "interpreters",
+     "data": { ... }
+   }
+   ```
+   EOF
+   
+   # Rulebook README
+   cat > books/rulebook/README.md << 'EOF'
+   # Rulebook - Validated Grammars
+   
+   Contains validated artifact grammars and schemas.
+   
+   ## Structure
+   
+   ```
+   rulebook/
+   ├── grammars/
+   │   ├── protocol_x_v1.ksy      # Kaitai Struct format
+   │   ├── binary_format_v2.ksy
+   │   └── file_format_v1.py      # Python parsers
+   └── schemas/
+       └── validation_results.json
+   ```
+   
+   ## Grammar Formats
+   
+   - **Kaitai Struct (.ksy)**: Declarative binary format specification
+   - **Python (.py)**: Custom parsers for complex formats
+   
+   ## Validation Requirements
+   
+   Before promotion to Rulebook:
+   1. Tested against 3+ samples
+   2. Boundary cases handled
+   3. Documentation complete
    4. Human review approved
+   EOF
    
-   ## Metadata
+   # Cookbook README
+   cat > books/cookbook/README.md << 'EOF'
+   # Cookbook - Analysis Methods
    
-   Each grammar includes:
-   - `protocol_name_vX.py` - Grammar code
-   - `protocol_name_vX.meta.json` - Promotion metadata
-   - `test_protocol_name_vX.py` - Test suite
+   Documented analysis procedures and workflows.
+   
+   ## Structure
+   
+   ```
+   cookbook/
+   ├── methods/
+   │   ├── entropy-analysis.md
+   │   ├── frequency-analysis.md
+   │   └── boundary-detection.md
+   └── examples/
+       └── pcap-analysis-workflow.md
+   ```
+   
+   ## Method Template
+   
+   ```markdown
+   # Method Name
+   
+   ## Purpose
+   Brief description
+   
+   ## Procedure
+   Step-by-step instructions
+   
+   ## Tools Required
+   List of tools
+   
+   ## Example
+   Concrete example
+   
+   ## References
+   Related skills, agents
+   ```
    EOF
    ```
 
-5. **Create Cookbook Initial Content**
-   ```markdown
-   # cookbook/methods/entropy_analysis.md
-   # Entropy Analysis Method
+**Day 5: Skills Template and Initial Documentation**
+
+4. **Create Skills Template**
+   ```bash
+   cat > skills/TEMPLATE.md << 'EOF'
+   # [Skill Name]
+   
+   **Category**: [protocol|pattern|binary|grammar]  
+   **Complexity**: [basic|intermediate|advanced]  
+   **Prerequisites**: [Required tools, prior knowledge]
    
    ## Purpose
    
-   Measure Shannon entropy at each byte position to identify:
-   - Low-entropy positions (likely control bytes)
-   - High-entropy positions (likely variable data)
-   - Zero-entropy positions (invariants)
+   One-sentence description of what this skill accomplishes.
    
-   ## Procedure
+   ## When to Use
    
-   1. Extract byte streams from PCAP
-   2. For each byte position 0..N:
-      - Collect all bytes at that position across all messages
-      - Compute frequency distribution
-      - Calculate Shannon entropy: H = -Σ p(i) * log2(p(i))
-   3. Classify positions:
-      - H < 2.0: Control byte (low variation)
-      - H > 6.0: Data field (high variation)
-      - H = 0: Invariant (fixed value)
+   - Context/scenario 1
+   - Context/scenario 2
+   - Context/scenario 3
    
-   ## Implementation
+   ## Methodology
    
-   See `Observer._compute_entropy_map()` in `scopes/observer.py`
+   ### Step 1: [Clear Action Verb]
    
-   ## Constitutional Basis
+   Specific instructions for this step...
    
-   This is a measurement procedure (Observer authority per Section 5).
-   Results must be logged as evidence (Section 2).
+   **Tools Required**: tool1, tool2  
+   **Expected Output**: Description of what you should see
+   
+   ### Step 2: [Next Action]
+   
+   Continue with next step...
+   
+   ### Step 3: [Final Action]
+   
+   Concluding steps...
+   
+   ## Example
+   
+   ### Input
+   Description or example of input data.
+   
+   ### Process
+   Step-by-step walkthrough with concrete data.
+   
+   ### Output
+   Expected results and interpretation.
+   
+   ## Interpretation Guide
+   
+   How to understand and act on the results:
+   - Pattern A indicates X
+   - Pattern B indicates Y
+   - Pattern C requires further analysis
+   
+   ## Common Pitfalls
+   
+   - Pitfall 1 and how to avoid it
+   - Pitfall 2 and how to avoid it
+   
+   ## Related Skills
+   
+   - [Related Skill A](../category/skill-a.md)
+   - [Related Skill B](../category/skill-b.md)
+   
+   ## References
+   
+   - External documentation links
+   - Research papers
+   - Tool documentation
+   EOF
+   ```
+
+5. **Create Initial Skill: Data Extraction**
+   ```bash
+   cat > skills/protocol/data-extraction.md << 'EOF'
+   # Data Extraction from Network Captures
+   
+   **Category**: protocol  
+   **Complexity**: basic  
+   **Prerequisites**: tshark installed, basic PCAP understanding
+   
+   ## Purpose
+   
+   Extract raw packet data from PCAP files for analysis.
+   
+   ## When to Use
+   
+   - Beginning protocol reverse engineering analysis
+   - Need to examine packet payloads
+   - Preparing data for statistical analysis
+   
+   ## Methodology
+   
+   ### Step 1: Extract TCP/UDP Streams
+   
+   Use tshark to extract stream data:
+   
+   ```bash
+   tshark -r input.pcap -q -z follow,tcp,ascii,0
+   ```
+   
+   **Tools Required**: tshark  
+   **Expected Output**: ASCII representation of TCP stream 0
+   
+   ### Step 2: Export Stream to File
+   
+   Extract raw bytes:
+   
+   ```bash
+   tshark -r input.pcap -q -z follow,tcp,raw,0 > stream_0.raw
+   ```
+   
+   ### Step 3: List All Streams
+   
+   Identify available streams:
+   
+   ```bash
+   tshark -r input.pcap -q -z conv,tcp
+   ```
+   
+   ## Example
+   
+   ### Input
+   PCAP file: `sample_protocol.pcap`
+   
+   ### Process
+   
+   1. List TCP conversations:
+      ```bash
+      tshark -r sample_protocol.pcap -q -z conv,tcp
+      ```
+      Output shows 5 TCP streams.
+   
+   2. Extract stream 0:
+      ```bash
+      tshark -r sample_protocol.pcap -q -z follow,tcp,raw,0 > stream_0.raw
+      ```
+   
+   3. Verify extraction:
+      ```bash
+      hexdump -C stream_0.raw | head -n 10
+      ```
+   
+   ### Output
+   
+   Raw binary file ready for pattern analysis.
+   
+   ## Interpretation Guide
+   
+   - Multiple streams may represent different protocol phases
+   - Stream 0 often contains handshake/negotiation
+   - Look for repeated patterns across streams
+   
+   ## Common Pitfalls
+   
+   - Missing `-q` flag causes verbose output
+   - Stream numbers are 0-indexed
+   - UDP streams numbered separately from TCP
+   
+   ## Related Skills
+   
+   - [Entropy Analysis](../pattern/entropy-analysis.md)
+   - [Frequency Analysis](../pattern/frequency-analysis.md)
+   
+   ## References
+   
+   - [tshark documentation](https://www.wireshark.org/docs/man-pages/tshark.html)
+   - [Wireshark Follow Stream](https://wiki.wireshark.org/Follow-Stream)
+   EOF
    ```
 
 #### Deliverables
-- [ ] Scope base class with memory boundaries
-- [ ] Notebook JSON schemas defined
-- [ ] Rulebook structure created
-- [ ] Cookbook initial methods documented
+- [ ] Agent base class with Books access implemented
+- [ ] Books directory structure documented
+- [ ] Notebook session management operational
+- [ ] Skills template created
+- [ ] At least 1 initial skill documented (data extraction)
+- [ ] Unit tests for Agent base class pass
 
 #### Validation Checkpoint
 ```bash
-# Test memory boundaries
-poetry run pytest tests/test_scope_base.py -v
-# Expected: All memory boundary tests pass
-```
+# Test agent base functionality
+poetry run pytest tests/test_agent_base.py -v
+# Expected: All tests pass
 
+# Verify Books structure
+ls -R books/
+# Expected: notebook/, rulebook/, cookbook/ with README files
+
+# Verify skills structure
+ls -R skills/
+# Expected: protocol/, pattern/, binary/, grammar/ with TEMPLATE.md
 ---
 
-### Week 4-7: Scope Implementation
+### Week 4: Agents - Interpreters (Data Analysis Agents)
 
-*(Continuing with Observer, Theorist, Validator, Archivist)*
+#### Objectives
+- Interpreter agents implemented for data extraction and analysis
+- Tool wrappers for tshark, hexdump, binutils created
+- Skills documentation for data interpretation created
+- HITL workflow for data analysis operational
 
-Due to length constraints, I'll provide the high-level structure for these weeks:
+#### Tasks
 
-**Week 4: Observer Scope**
-- Implement stream extraction via tshark
-- Statistical analysis functions
-- Notebook integration
-- Unit tests >80% coverage
+**Day 1-2: Data Interpreter Agent**
 
-**Week 5: Theorist Scope**
-- Hypothesis generation from observations
-- Boundary/field/type inference
-- Evidence linking
-- Unit tests
+1. **Implement Data Interpreter**
+   ```python
+   # reshark/agents/interpreters/data_interpreter.py
+   """
+   Data Interpreter Agent - Extracts and interprets raw data from artifacts.
+   
+   Capabilities:
+   - Extract streams from PCAPs
+   - Parse binary structures
+   - Identify data boundaries
+   - Compute basic statistics
+   """
+   
+   from typing import Dict, Any, List, Optional
+   from pathlib import Path
+   import logging
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class DataInterpreter(Agent):
+       """
+       Agent specialized in data extraction and basic interpretation.
+       
+       Follows skills:
+       - protocol/data-extraction.md
+       - pattern/boundary-detection.md
+       """
+       
+       @property
+       def agent_type(self) -> str:
+           return "interpreters"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Execute data interpretation on input artifact.
+           
+           Args:
+               inputs: {
+                   "artifact_path": Path to input file (PCAP, binary, etc.),
+                   "artifact_type": "pcap" | "binary" | "file",
+                   "skill": Optional skill to follow
+               }
+               
+           Returns:
+               {
+                   "streams": List of extracted data streams,
+                   "metadata": Artifact metadata,
+                   "statistics": Basic statistics
+               }
+           """
+           artifact_path = Path(inputs["artifact_path"])
+           artifact_type = inputs.get("artifact_type", "pcap")
+           
+           if not artifact_path.exists():
+               raise AgentError(f"Artifact not found: {artifact_path}")
+           
+           # Read relevant skill if specified
+           skill_path = inputs.get("skill")
+           if skill_path:
+               skill_content = self.read_skill(skill_path)
+               logger.info(f"Following skill: {skill_path}")
+               # In HITL mode, Cline reads this and guides execution
+               # In Autonomous mode, LLM reads this to determine steps
+           
+           # Execute based on artifact type
+           if artifact_type == "pcap":
+               return self._interpret_pcap(artifact_path)
+           elif artifact_type == "binary":
+               return self._interpret_binary(artifact_path)
+           else:
+               raise AgentError(f"Unsupported artifact type: {artifact_type}")
+       
+       def _interpret_pcap(self, pcap_path: Path) -> Dict[str, Any]:
+           """Extract and interpret PCAP data."""
+           logger.info(f"Interpreting PCAP: {pcap_path}")
+           
+           # Invoke tshark tool to list conversations
+           conversations = self.invoke_tool("tshark", {
+               "command": "conversations",
+               "input": str(pcap_path),
+               "protocol": "tcp"
+           })
+           
+           # Extract streams
+           streams = []
+           if conversations.get("success"):
+               tcp_convs = conversations.get("tcp_conversations", [])
+               
+               for idx, conv in enumerate(tcp_convs[:10]):  # Limit to first 10
+                   stream_data = self.invoke_tool("tshark", {
+                       "command": "follow_stream",
+                       "input": str(pcap_path),
+                       "stream_type": "tcp",
+                       "stream_id": idx,
+                       "format": "raw"
+                   })
+                   
+                   if stream_data.get("success"):
+                       streams.append({
+                           "stream_id": idx,
+                           "data": stream_data["data"],
+                           "size": len(stream_data["data"]),
+                           "conversation": conv
+                       })
+           
+           # Log evidence
+           self.log_evidence({
+               "method": "pcap_interpretation",
+               "tool": "tshark",
+               "streams_found": len(streams),
+               "artifact": str(pcap_path)
+           })
+           
+           # Write to notebook
+           self.write_notebook("extracted_streams", {
+               "artifact": str(pcap_path),
+               "streams": streams,
+               "count": len(streams)
+           })
+           
+           return {
+               "streams": streams,
+               "metadata": {
+                   "artifact_type": "pcap",
+                   "stream_count": len(streams)
+               },
+               "statistics": self._compute_stream_statistics(streams)
+           }
+       
+       def _interpret_binary(self, binary_path: Path) -> Dict[str, Any]:
+           """Extract and interpret binary file data."""
+           logger.info(f"Interpreting binary: {binary_path}")
+           
+           # Invoke file tool to identify file type
+           file_info = self.invoke_tool("file", {
+               "input": str(binary_path)
+           })
+           
+           # Extract strings
+           strings_data = self.invoke_tool("strings", {
+               "input": str(binary_path),
+               "min_length": 4
+           })
+           
+           # Get hexdump sample
+           hexdump = self.invoke_tool("hexdump", {
+               "input": str(binary_path),
+               "length": 512,  # First 512 bytes
+               "format": "canonical"
+           })
+           
+           result = {
+               "streams": [{
+                   "stream_id": 0,
+                   "data": binary_path.read_bytes(),
+                   "size": binary_path.stat().st_size
+               }],
+               "metadata": {
+                   "artifact_type": "binary",
+                   "file_type": file_info.get("file_type"),
+                   "size": binary_path.stat().st_size
+               },
+               "analysis": {
+                   "strings": strings_data.get("strings", []),
+                   "hexdump_preview": hexdump.get("output", "")
+               }
+           }
+           
+           self.log_evidence({
+               "method": "binary_interpretation",
+               "tools": ["file", "strings", "hexdump"],
+               "artifact": str(binary_path)
+           })
+           
+           self.write_notebook("extracted_binary", result)
+           
+           return result
+       
+       def _compute_stream_statistics(self, streams: List[Dict]) -> Dict:
+           """Compute basic statistics for streams."""
+           if not streams:
+               return {}
+           
+           sizes = [s["size"] for s in streams]
+           
+           return {
+               "total_streams": len(streams),
+               "total_bytes": sum(sizes),
+               "min_size": min(sizes),
+               "max_size": max(sizes),
+               "avg_size": sum(sizes) / len(sizes)
+           }
+   ```
 
-**Week 6: Validator Scope**
-- Test suite generation
-- Cross-PCAP validation (enforce 3 minimum)
-- Negative testing
-- Unit tests
+2. **Unit Tests for Data Interpreter**
+   ```python
+   # tests/agents/interpreters/test_data_interpreter.py
+   import pytest
+   from pathlib import Path
+   from reshark.agents.interpreters.data_interpreter import DataInterpreter
+   
+   @pytest.fixture
+   def mock_tools_registry():
+       """Mock tools registry for testing."""
+       class MockRegistry:
+           def invoke(self, tool_name, params):
+               if tool_name == "tshark":
+                   if params.get("command") == "conversations":
+                       return {
+                           "success": True,
+                           "tcp_conversations": [
+                               {"src": "192.168.1.1", "dst": "192.168.1.2"}
+                           ]
+                       }
+                   elif params.get("command") == "follow_stream":
+                       return {
+                           "success": True,
+                           "data": b"test_data"
+                       }
+               return {"success": False}
+       
+       return MockRegistry()
+   
+   def test_data_interpreter_initialization(tmp_path, mock_tools_registry):
+       """Test DataInterpreter can be initialized."""
+       books_path = tmp_path / "books"
+       agent = DataInterpreter(books_path, mock_tools_registry)
+       agent.session_id = "test-001"
+       
+       assert agent.agent_type == "interpreters"
+   
+   def test_read_skill(tmp_path, mock_tools_registry):
+       """Test agent can read skill documentation."""
+       books_path = tmp_path / "books"
+       skills_path = tmp_path / "skills" / "protocol"
+       skills_path.mkdir(parents=True)
+       
+       # Create test skill
+       skill_file = skills_path / "data-extraction.md"
+       skill_file.write_text("# Data Extraction\n\nMethodology...")
+       
+       agent = DataInterpreter(books_path, mock_tools_registry)
+       agent.skills_path = tmp_path / "skills"
+       
+       content = agent.read_skill("protocol/data-extraction.md")
+       assert "Data Extraction" in content
+   ```
 
-**Week 7: Archivist Scope**
-- Promotion workflow
-- Grammar generation
-- Session archival
-- Unit tests
+**Day 3: Pattern Interpreter Agent**
+
+3. **Implement Pattern Interpreter**
+   ```python
+   # reshark/agents/interpreters/pattern_interpreter.py
+   """
+   Pattern Interpreter Agent - Identifies patterns in data.
+   
+   Capabilities:
+   - Compute entropy maps
+   - Analyze byte frequency distributions
+   - Detect repeated sequences
+   - Identify anomalies
+   """
+   
+   from typing import Dict, Any, List
+   import logging
+   from collections import Counter
+   import math
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class PatternInterpreter(Agent):
+       """
+       Agent specialized in pattern recognition and statistical analysis.
+       
+       Follows skills:
+       - pattern/entropy-analysis.md
+       - pattern/frequency-analysis.md
+       - pattern/sequence-detection.md
+       """
+       
+       @property
+       def agent_type(self) -> str:
+           return "interpreters"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Execute pattern analysis on data streams.
+           
+           Args:
+               inputs: {
+                   "streams": List of data streams to analyze,
+                   "analysis_type": "entropy" | "frequency" | "sequences"
+               }
+               
+           Returns:
+               {
+                   "entropy_map": Per-position entropy values,
+                   "frequency_dist": Byte frequency distribution,
+                   "sequences": Detected repeated sequences
+               }
+           """
+           streams = inputs.get("streams", [])
+           analysis_type = inputs.get("analysis_type", "all")
+           
+           if not streams:
+               raise AgentError("No streams provided for analysis")
+           
+           results = {}
+           
+           if analysis_type in ["entropy", "all"]:
+               results["entropy"] = self._analyze_entropy(streams)
+           
+           if analysis_type in ["frequency", "all"]:
+               results["frequency"] = self._analyze_frequency(streams)
+           
+           if analysis_type in ["sequences", "all"]:
+               results["sequences"] = self._detect_sequences(streams)
+           
+           # Write results to notebook
+           self.write_notebook("pattern_analysis", results)
+           
+           return results
+       
+       def _analyze_entropy(self, streams: List[Dict]) -> Dict:
+           """
+           Compute Shannon entropy for each byte position.
+           Follows: skills/pattern/entropy-analysis.md
+           """
+           logger.info("Computing entropy map")
+           
+           # Extract byte arrays
+           byte_streams = [s["data"] for s in streams if isinstance(s["data"], bytes)]
+           
+           if not byte_streams:
+               return {}
+           
+           # Find max length
+           max_len = max(len(s) for s in byte_streams)
+           
+           entropy_map = {}
+           
+           for pos in range(max_len):
+               # Collect bytes at this position across all streams
+               bytes_at_pos = []
+               for stream in byte_streams:
+                   if pos < len(stream):
+                       bytes_at_pos.append(stream[pos])
+               
+               if bytes_at_pos:
+                   # Compute entropy
+                   entropy = self._shannon_entropy(bytes_at_pos)
+                   entropy_map[pos] = {
+                       "entropy": entropy,
+                       "classification": self._classify_entropy(entropy)
+                   }
+           
+           self.log_evidence({
+               "method": "entropy_analysis",
+               "positions_analyzed": len(entropy_map),
+               "streams_count": len(byte_streams)
+           })
+           
+           return entropy_map
+       
+       def _shannon_entropy(self, data: List[int]) -> float:
+           """Calculate Shannon entropy."""
+           if not data:
+               return 0.0
+           
+           counter = Counter(data)
+           total = len(data)
+           
+           entropy = 0.0
+           for count in counter.values():
+               p = count / total
+               if p > 0:
+                   entropy -= p * math.log2(p)
+           
+           return entropy
+       
+       def _classify_entropy(self, entropy: float) -> str:
+           """Classify entropy level."""
+           if entropy < 2.0:
+               return "control"  # Low variation
+           elif entropy > 6.0:
+               return "data"  # High variation
+           elif entropy == 0.0:
+               return "invariant"  # Fixed
+           else:
+               return "mixed"
+       
+       def _analyze_frequency(self, streams: List[Dict]) -> Dict:
+           """
+           Analyze byte frequency distribution.
+           Follows: skills/pattern/frequency-analysis.md
+           """
+           logger.info("Analyzing byte frequency")
+           
+           all_bytes = []
+           for s in streams:
+               if isinstance(s["data"], bytes):
+                   all_bytes.extend(s["data"])
+           
+           if not all_bytes:
+               return {}
+           
+           counter = Counter(all_bytes)
+           total = len(all_bytes)
+           
+           frequency_dist = {
+               byte_val: {
+                   "count": count,
+                   "frequency": count / total
+               }
+               for byte_val, count in counter.items()
+           }
+           
+           self.log_evidence({
+               "method": "frequency_analysis",
+               "total_bytes": total,
+               "unique_bytes": len(counter)
+           })
+           
+           return {
+               "distribution": frequency_dist,
+               "total_bytes": total,
+               "unique_bytes": len(counter)
+           }
+       
+       def _detect_sequences(self, streams: List[Dict]) -> List[Dict]:
+           """
+           Detect repeated byte sequences.
+           Follows: skills/pattern/sequence-detection.md
+           """
+           logger.info("Detecting repeated sequences")
+           
+           # Simple implementation: find 4-byte sequences that repeat
+           sequences = []
+           
+           for stream in streams:
+               if not isinstance(stream["data"], bytes):
+                   continue
+               
+               data = stream["data"]
+               min_len = 4
+               
+               for i in range(len(data) - min_len + 1):
+                   seq = data[i:i+min_len]
+                   
+                   # Count occurrences
+                   count = data.count(seq)
+                   
+                   if count > 1:
+                       # Find all positions
+                       positions = []
+                       start = 0
+                       while True:
+                           pos = data.find(seq, start)
+                           if pos == -1:
+                               break
+                           positions.append(pos)
+                           start = pos + 1
+                       
+                       sequences.append({
+                           "sequence": seq.hex(),
+                           "length": len(seq),
+                           "count": count,
+                           "positions": positions
+                       })
+           
+           # Remove duplicates
+           unique_sequences = []
+           seen = set()
+           for seq in sequences:
+               key = seq["sequence"]
+               if key not in seen:
+                   seen.add(key)
+                   unique_sequences.append(seq)
+           
+           return unique_sequences
+   ```
+
+**Day 4-5: Tool Wrappers**
+
+4. **Implement Tool Wrappers**
+   ```python
+   # reshark/tools/tshark_wrapper.py
+   """
+   Wrapper for tshark command-line tool.
+   """
+   
+   import subprocess
+   from typing import Dict, Any, List, Optional
+   from pathlib import Path
+   import logging
+   
+   logger = logging.getLogger(__name__)
+   
+   class TsharkWrapper:
+       """Wrapper for tshark operations."""
+       
+       def __init__(self, tshark_path: str = "tshark"):
+           self.tshark_path = tshark_path
+           self._verify_installation()
+       
+       def _verify_installation(self):
+           """Verify tshark is installed."""
+           try:
+               subprocess.run(
+                   [self.tshark_path, "--version"],
+                   capture_output=True,
+                   check=True
+               )
+           except (subprocess.CalledProcessError, FileNotFoundError):
+               raise RuntimeError(f"tshark not found at {self.tshark_path}")
+       
+       def list_conversations(
+           self,
+           pcap_path: Path,
+           protocol: str = "tcp"
+       ) -> Dict[str, Any]:
+           """List conversations in PCAP."""
+           cmd = [
+               self.tshark_path,
+               "-r", str(pcap_path),
+               "-q",
+               "-z", f"conv,{protocol}"
+           ]
+           
+           try:
+               result = subprocess.run(
+                   cmd,
+                   capture_output=True,
+                   text=True,
+                   timeout=60
+               )
+               
+               if result.returncode == 0:
+                   # Parse output
+                   conversations = self._parse_conversations(result.stdout, protocol)
+                   return {
+                       "success": True,
+                       f"{protocol}_conversations": conversations
+                   }
+               else:
+                   return {
+                       "success": False,
+                       "error": result.stderr
+                   }
+           
+           except subprocess.TimeoutExpired:
+               return {"success": False, "error": "timeout"}
+       
+       def follow_stream(
+           self,
+           pcap_path: Path,
+           stream_type: str,
+           stream_id: int,
+           format: str = "raw"
+       ) -> Dict[str, Any]:
+           """Extract stream data."""
+           cmd = [
+               self.tshark_path,
+               "-r", str(pcap_path),
+               "-q",
+               "-z", f"follow,{stream_type},{format},{stream_id}"
+           ]
+           
+           try:
+               result = subprocess.run(
+                   cmd,
+                   capture_output=True,
+                   timeout=60
+               )
+               
+               if result.returncode == 0:
+                   return {
+                       "success": True,
+                       "data": result.stdout
+                   }
+               else:
+                   return {
+                       "success": False,
+                       "error": result.stderr.decode()
+                   }
+           
+           except subprocess.TimeoutExpired:
+               return {"success": False, "error": "timeout"}
+       
+       def _parse_conversations(self, output: str, protocol: str) -> List[Dict]:
+           """Parse tshark conversation output."""
+           # Simple parser - would need refinement
+           conversations = []
+           lines = output.strip().split('\n')
+           
+           for line in lines:
+               if '<->' in line:
+                   parts = line.split()
+                   if len(parts) >= 2:
+                       conversations.append({
+                           "src": parts[0],
+                           "dst": parts[2] if len(parts) > 2 else "unknown"
+                       })
+           
+           return conversations
+   ```
+
+#### Deliverables
+- [ ] DataInterpreter agent implemented and tested
+- [ ] PatternInterpreter agent implemented and tested
+- [ ] Tool wrappers (tshark, hexdump, file) operational
+- [ ] Skills documentation updated with interpretation methods
+- [ ] HITL workflow tested with sample PCAP
+
+#### Validation Checkpoint
+```bash
+# Test interpreters
+poetry run pytest tests/agents/interpreters/ -v
+# Expected: All tests pass
+
+# Test HITL workflow (with Cline)
+# 1. Open Cline
+# 2. Request: "Analyze sample.pcap using DataInterpreter"
+# 3. Verify: Agent reads skill, invokes tools, writes notebook
+```
 
 ---
 
