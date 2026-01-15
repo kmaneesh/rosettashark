@@ -1761,6 +1761,1101 @@ poetry run pytest tests/agents/interpreters/ -v
 
 ---
 
+### Week 5: Agents - Orchestration (Workflow Management)
+
+#### Objectives
+- Task orchestration agent implemented
+- Session management and lifecycle
+- Workflow coordination between agents
+- Skills for multi-step analysis procedures
+
+#### Tasks
+
+**Day 1-2: Session Manager**
+
+1. **Implement Session Manager**
+   ```python
+   # reshark/agents/orchestration/session_manager.py
+   """
+   Session Manager - Manages analysis session lifecycle.
+   
+   Responsibilities:
+   - Create and track sessions
+   - Coordinate agent execution
+   - Archive completed sessions
+   - Maintain session state
+   """
+   
+   from typing import Dict, Any, Optional
+   from pathlib import Path
+   from datetime import datetime
+   import uuid
+   import shutil
+   import logging
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class SessionManager(Agent):
+       """
+       Manages analysis session lifecycle and coordination.
+       """
+       
+       @property
+       def agent_type(self) -> str:
+           return "orchestration"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Execute session management operation.
+           
+           Args:
+               inputs: {
+                   "operation": "create" | "archive" | "status",
+                   "session_id": Optional session ID for status/archive,
+                   "metadata": Optional session metadata
+               }
+               
+           Returns:
+               Operation results with session information
+           """
+           operation = inputs.get("operation", "create")
+           
+           if operation == "create":
+               return self._create_session(inputs.get("metadata", {}))
+           elif operation == "archive":
+               return self._archive_session(inputs["session_id"])
+           elif operation == "status":
+               return self._get_session_status(inputs["session_id"])
+           else:
+               raise AgentError(f"Unknown operation: {operation}")
+       
+       def _create_session(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+           """Create new analysis session."""
+           # Generate session ID
+           timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+           unique_id = str(uuid.uuid4())[:8]
+           session_id = f"session-{timestamp}-{unique_id}"
+           
+           # Create session directory
+           session_dir = self.notebook_path / "sessions" / session_id
+           session_dir.mkdir(parents=True, exist_ok=True)
+           
+           # Write session metadata
+           session_meta = {
+               "session_id": session_id,
+               "created_at": datetime.utcnow().isoformat(),
+               "status": "active",
+               "metadata": metadata
+           }
+           
+           meta_file = session_dir / "session.json"
+           import json
+           with open(meta_file, 'w') as f:
+               json.dump(session_meta, f, indent=2)
+           
+           logger.info(f"Created session: {session_id}")
+           
+           return {
+               "session_id": session_id,
+               "session_dir": str(session_dir),
+               "status": "created"
+           }
+       
+       def _archive_session(self, session_id: str) -> Dict[str, Any]:
+           """Archive completed session."""
+           session_dir = self.notebook_path / "sessions" / session_id
+           
+           if not session_dir.exists():
+               raise AgentError(f"Session not found: {session_id}")
+           
+           # Create archive
+           archive_dir = self.notebook_path / "archives"
+           archive_dir.mkdir(exist_ok=True)
+           
+           archive_path = archive_dir / f"{session_id}.tar.gz"
+           
+           import tarfile
+           with tarfile.open(archive_path, "w:gz") as tar:
+               tar.add(session_dir, arcname=session_id)
+           
+           # Remove session directory
+           shutil.rmtree(session_dir)
+           
+           logger.info(f"Archived session: {session_id} -> {archive_path}")
+           
+           return {
+               "session_id": session_id,
+               "archive_path": str(archive_path),
+               "status": "archived"
+           }
+       
+       def _get_session_status(self, session_id: str) -> Dict[str, Any]:
+           """Get current session status."""
+           session_dir = self.notebook_path / "sessions" / session_id
+           
+           if not session_dir.exists():
+               return {
+                   "session_id": session_id,
+                   "status": "not_found"
+               }
+           
+           # Read session metadata
+           meta_file = session_dir / "session.json"
+           import json
+           
+           if meta_file.exists():
+               with open(meta_file) as f:
+                   metadata = json.load(f)
+           else:
+               metadata = {}
+           
+           # Count files
+           file_count = len(list(session_dir.glob("*.json")))
+           
+           return {
+               "session_id": session_id,
+               "status": "active",
+               "metadata": metadata,
+               "file_count": file_count,
+               "size_bytes": sum(f.stat().st_size for f in session_dir.rglob("*") if f.is_file())
+           }
+   ```
+
+**Day 3-4: Task Orchestrator**
+
+2. **Implement Task Orchestrator**
+   ```python
+   # reshark/agents/orchestration/task_orchestrator.py
+   """
+   Task Orchestrator - Coordinates multi-agent analysis workflows.
+   
+   Follows skills:
+   - cookbook/methods/analysis-workflow.md
+   """
+   
+   from typing import Dict, Any, List
+   import logging
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class TaskOrchestrator(Agent):
+       """
+       Orchestrates execution of multi-step analysis tasks.
+       
+       In HITL mode: Guides human through workflow steps
+       In Autonomous mode: Executes workflow automatically
+       """
+       
+       def __init__(self, books_path, tools_registry=None, agent_registry=None):
+           super().__init__(books_path, tools_registry)
+           self.agent_registry = agent_registry or {}
+       
+       @property
+       def agent_type(self) -> str:
+           return "orchestration"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Execute orchestrated workflow.
+           
+           Args:
+               inputs: {
+                   "workflow": "extract_and_analyze" | "validate_grammar",
+                   "artifact_path": Path to input artifact,
+                   "workflow_params": Additional parameters
+               }
+               
+           Returns:
+               Workflow execution results
+           """
+           workflow = inputs.get("workflow")
+           
+           if workflow == "extract_and_analyze":
+               return self._workflow_extract_and_analyze(inputs)
+           elif workflow == "validate_grammar":
+               return self._workflow_validate_grammar(inputs)
+           else:
+               raise AgentError(f"Unknown workflow: {workflow}")
+       
+       def _workflow_extract_and_analyze(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Workflow: Extract data and perform pattern analysis.
+           
+           Steps:
+           1. Extract data streams
+           2. Compute statistics
+           3. Identify patterns
+           4. Write results to notebook
+           """
+           artifact_path = inputs["artifact_path"]
+           artifact_type = inputs.get("artifact_type", "pcap")
+           
+           logger.info(f"Starting extract_and_analyze workflow for {artifact_path}")
+           
+           # Step 1: Extract data using DataInterpreter
+           data_interpreter = self.agent_registry.get("DataInterpreter")
+           if not data_interpreter:
+               raise AgentError("DataInterpreter not registered")
+           
+           data_interpreter.session_id = self.session_id
+           
+           extraction_result = data_interpreter.execute({
+               "artifact_path": artifact_path,
+               "artifact_type": artifact_type,
+               "skill": "protocol/data-extraction.md"
+           })
+           
+           streams = extraction_result.get("streams", [])
+           
+           if not streams:
+               return {
+                   "status": "failed",
+                   "error": "No streams extracted",
+                   "workflow": "extract_and_analyze"
+               }
+           
+           # Step 2: Analyze patterns using PatternInterpreter
+           pattern_interpreter = self.agent_registry.get("PatternInterpreter")
+           if not pattern_interpreter:
+               raise AgentError("PatternInterpreter not registered")
+           
+           pattern_interpreter.session_id = self.session_id
+           
+           pattern_result = pattern_interpreter.execute({
+               "streams": streams,
+               "analysis_type": "all"
+           })
+           
+           # Step 3: Consolidate results
+           workflow_result = {
+               "status": "success",
+               "workflow": "extract_and_analyze",
+               "artifact": artifact_path,
+               "extraction": {
+                   "streams_count": len(streams),
+                   "total_bytes": extraction_result.get("statistics", {}).get("total_bytes", 0)
+               },
+               "patterns": {
+                   "entropy_positions": len(pattern_result.get("entropy", {})),
+                   "sequences_found": len(pattern_result.get("sequences", []))
+               }
+           }
+           
+           # Write consolidated results
+           self.write_notebook("workflow_result", workflow_result)
+           
+           self.log_evidence({
+               "workflow": "extract_and_analyze",
+               "steps_completed": ["extract", "analyze_patterns"],
+               "artifact": artifact_path
+           })
+           
+           logger.info("Workflow completed successfully")
+           
+           return workflow_result
+       
+       def _workflow_validate_grammar(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Workflow: Validate grammar against multiple samples.
+           
+           Placeholder for Phase 2 validation workflows.
+           """
+           return {
+               "status": "not_implemented",
+               "workflow": "validate_grammar"
+           }
+   ```
+
+**Day 5: Workflow Skills Documentation**
+
+3. **Create Analysis Workflow Skill**
+   ```bash
+   cat > books/cookbook/methods/analysis-workflow.md << 'EOF'
+   # Complete Analysis Workflow
+   
+   ## Purpose
+   
+   Orchestrated multi-step workflow for artifact analysis combining extraction, pattern analysis, and hypothesis generation.
+   
+   ## Workflow Steps
+   
+   ### Phase 1: Data Extraction
+   
+   1. **Identify Artifact Type**
+      - PCAP: Network capture
+      - Binary: Executable or data file
+      - File: Document or data format
+   
+   2. **Extract Raw Data**
+      - Use appropriate interpreter agent
+      - Follow: skills/protocol/data-extraction.md
+      - Result: List of data streams
+   
+   ### Phase 2: Pattern Analysis
+   
+   3. **Compute Statistics**
+      - Entropy map per byte position
+      - Frequency distributions
+      - Follow: skills/pattern/entropy-analysis.md
+   
+   4. **Identify Patterns**
+      - Repeated sequences
+      - Invariant positions
+      - Variable fields
+      - Follow: skills/pattern/sequence-detection.md
+   
+   ### Phase 3: Structure Inference
+   
+   5. **Identify Boundaries**
+      - Message/record boundaries
+      - Header/payload separation
+      - Follow: skills/binary/boundary-detection.md
+   
+   6. **Type Inference**
+      - Field data types
+      - Endianness detection
+      - Follow: skills/binary/type-inference.md
+   
+   ## Orchestration Pattern
+   
+   ```python
+   # HITL Mode (Cline guided)
+   orchestrator = TaskOrchestrator(books_path, tools, agents)
+   orchestrator.session_id = "session-001"
+   
+   result = orchestrator.execute({
+       "workflow": "extract_and_analyze",
+       "artifact_path": "data/sample.pcap",
+       "artifact_type": "pcap"
+   })
+   ```
+   
+   ## Output
+   
+   Workflow produces:
+   - Notebook entries for each step
+   - Consolidated results summary
+   - Evidence log for all findings
+   - Ready for validation phase
+   
+   ## References
+   
+   - [Data Extraction Skill](../../skills/protocol/data-extraction.md)
+   - [Entropy Analysis Skill](../../skills/pattern/entropy-analysis.md)
+   - [Sequence Detection Skill](../../skills/pattern/sequence-detection.md)
+   EOF
+   ```
+
+#### Deliverables
+- [ ] SessionManager agent implemented
+- [ ] TaskOrchestrator agent with workflow coordination
+- [ ] Agent registry for cross-agent communication
+- [ ] Workflow skills documented in Cookbook
+- [ ] Unit tests for orchestration agents
+
+#### Validation Checkpoint
+```bash
+# Test orchestration
+poetry run pytest tests/agents/orchestration/ -v
+
+# Test complete workflow (HITL)
+# 1. Create session via SessionManager
+# 2. Execute extract_and_analyze workflow
+# 3. Verify results in Notebook
+# 4. Archive session
+```
+
+---
+
+### Week 6: Agents - Validation (Quality Assurance)
+
+#### Objectives
+- Validation agents for grammar testing
+- Cross-sample validation logic
+- Result verification agents
+- Constitutional compliance checking
+
+#### Tasks
+
+**Day 1-3: Grammar Validator Agent**
+
+1. **Implement Grammar Validator**
+   ```python
+   # reshark/agents/validation/grammar_validator.py
+   """
+   Grammar Validator - Validates grammars against multiple samples.
+   
+   Constitutional requirement: Minimum 3 samples for validation.
+   Follows: skills/grammar/grammar-validation.md
+   """
+   
+   from typing import Dict, Any, List
+   from pathlib import Path
+   import logging
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class GrammarValidator(Agent):
+       """
+       Validates proposed grammars against multiple data samples.
+       
+       Enforces Constitutional requirement of >= 3 samples.
+       """
+       
+       @property
+       def agent_type(self) -> str:
+           return "validation"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Execute grammar validation.
+           
+           Args:
+               inputs: {
+                   "grammar_path": Path to grammar file (.ksy or .py),
+                   "sample_paths": List of sample data paths (minimum 3),
+                   "validation_type": "parse" | "boundary" | "comprehensive"
+               }
+               
+           Returns:
+               Validation results with pass/fail status
+           """
+           grammar_path = Path(inputs["grammar_path"])
+           sample_paths = [Path(p) for p in inputs["sample_paths"]]
+           validation_type = inputs.get("validation_type", "comprehensive")
+           
+           # Constitutional check: minimum 3 samples
+           if len(sample_paths) < 3:
+               raise AgentError(
+                   f"Constitutional violation: Validation requires >= 3 samples, "
+                   f"got {len(sample_paths)}. See Constitution Section on Validation."
+               )
+           
+           logger.info(f"Validating grammar {grammar_path} against {len(sample_paths)} samples")
+           
+           # Read grammar
+           if not grammar_path.exists():
+               raise AgentError(f"Grammar not found: {grammar_path}")
+           
+           grammar_content = grammar_path.read_text()
+           
+           # Validate each sample
+           validation_results = []
+           
+           for idx, sample_path in enumerate(sample_paths):
+               if not sample_path.exists():
+                   logger.warning(f"Sample not found: {sample_path}")
+                   continue
+               
+               result = self._validate_sample(
+                   grammar_content,
+                   sample_path,
+                   validation_type
+               )
+               
+               result["sample_id"] = idx
+               result["sample_path"] = str(sample_path)
+               validation_results.append(result)
+           
+           # Compute overall status
+           passed = [r for r in validation_results if r.get("status") == "pass"]
+           failed = [r for r in validation_results if r.get("status") == "fail"]
+           
+           overall_status = "pass" if len(failed) == 0 else "fail"
+           
+           result = {
+               "grammar": str(grammar_path),
+               "sample_count": len(sample_paths),
+               "validation_type": validation_type,
+               "overall_status": overall_status,
+               "passed": len(passed),
+               "failed": len(failed),
+               "results": validation_results
+           }
+           
+           # Write to notebook
+           self.write_notebook("validation_result", result)
+           
+           # Log evidence
+           self.log_evidence({
+               "validation_method": "cross_sample_validation",
+               "grammar": str(grammar_path),
+               "samples_tested": len(sample_paths),
+               "constitutional_compliance": len(sample_paths) >= 3
+           })
+           
+           return result
+       
+       def _validate_sample(
+           self,
+           grammar: str,
+           sample_path: Path,
+           validation_type: str
+       ) -> Dict[str, Any]:
+           """Validate grammar against single sample."""
+           
+           if validation_type in ["parse", "comprehensive"]:
+               # Attempt to parse sample with grammar
+               parse_result = self._try_parse(grammar, sample_path)
+               
+               if not parse_result["success"]:
+                   return {
+                       "status": "fail",
+                       "test": "parse",
+                       "error": parse_result.get("error")
+                   }
+           
+           if validation_type in ["boundary", "comprehensive"]:
+               # Test boundary detection
+               boundary_result = self._test_boundaries(grammar, sample_path)
+               
+               if not boundary_result["success"]:
+                   return {
+                       "status": "fail",
+                       "test": "boundary",
+                       "error": boundary_result.get("error")
+                   }
+           
+           return {
+               "status": "pass",
+               "tests_passed": ["parse", "boundary"] if validation_type == "comprehensive" else [validation_type]
+           }
+       
+       def _try_parse(self, grammar: str, sample_path: Path) -> Dict[str, Any]:
+           """Attempt to parse sample using grammar."""
+           # Placeholder: Would invoke actual parser (Kaitai, custom parser, etc.)
+           logger.info(f"Parsing {sample_path} with grammar")
+           
+           # For now, return success (actual implementation would parse)
+           return {
+               "success": True,
+               "parsed_fields": []
+           }
+       
+       def _test_boundaries(self, grammar: str, sample_path: Path) -> Dict[str, Any]:
+           """Test boundary detection in sample."""
+           logger.info(f"Testing boundaries in {sample_path}")
+           
+           # Placeholder: Would test message/field boundaries
+           return {
+               "success": True,
+               "boundaries_detected": []
+           }
+   ```
+
+**Day 4: Consistency Checker Agent**
+
+2. **Implement Consistency Checker**
+   ```python
+   # reshark/agents/validation/consistency_checker.py
+   """
+   Consistency Checker - Verifies consistency across analysis results.
+   
+   Checks:
+   - Pattern consistency across samples
+   - Grammar consistency with observations
+   - Result reproducibility
+   """
+   
+   from typing import Dict, Any, List
+   import logging
+   
+   from reshark.agents.base import Agent, AgentError
+   
+   logger = logging.getLogger(__name__)
+   
+   class ConsistencyChecker(Agent):
+       """
+       Validates consistency of analysis results.
+       """
+       
+       @property
+       def agent_type(self) -> str:
+           return "validation"
+       
+       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Check consistency of analysis results.
+           
+           Args:
+               inputs: {
+                   "check_type": "patterns" | "grammar" | "all",
+                   "session_id": Session to validate
+               }
+               
+           Returns:
+               Consistency check results
+           """
+           check_type = inputs.get("check_type", "all")
+           session_id = inputs.get("session_id", self.session_id)
+           
+           if not session_id:
+               raise AgentError("No session specified for consistency check")
+           
+           # Read session data from Notebook
+           entropy_data = self.read_notebook("pattern_analysis")
+           extracted_data = self.read_notebook("extracted_streams")
+           
+           results = {}
+           
+           if check_type in ["patterns", "all"]:
+               results["pattern_consistency"] = self._check_pattern_consistency(
+                   entropy_data,
+                   extracted_data
+               )
+           
+           if check_type in ["grammar", "all"]:
+               results["grammar_consistency"] = self._check_grammar_consistency()
+           
+           overall = "pass" if all(
+               r.get("status") == "pass" 
+               for r in results.values()
+           ) else "fail"
+           
+           result = {
+               "check_type": check_type,
+               "session_id": session_id,
+               "overall_status": overall,
+               "checks": results
+           }
+           
+           self.write_notebook("consistency_check", result)
+           
+           return result
+       
+       def _check_pattern_consistency(
+           self,
+           entropy_data: Dict,
+           extracted_data: Dict
+       ) -> Dict[str, Any]:
+           """Check pattern analysis consistency."""
+           if not entropy_data or not extracted_data:
+               return {"status": "skip", "reason": "missing_data"}
+           
+           # Verify entropy calculations are consistent
+           entropy_map = entropy_data.get("data", {}).get("entropy", {})
+           streams = extracted_data.get("data", {}).get("streams", [])
+           
+           if not entropy_map or not streams:
+               return {"status": "skip", "reason": "no_data"}
+           
+           # Check: Number of positions matches stream lengths
+           expected_positions = max(len(s.get("data", b"")) for s in streams)
+           actual_positions = len(entropy_map)
+           
+           if abs(expected_positions - actual_positions) > 10:  # Allow small variance
+               return {
+                   "status": "fail",
+                   "issue": "position_mismatch",
+                   "expected": expected_positions,
+                   "actual": actual_positions
+               }
+           
+           return {"status": "pass"}
+       
+       def _check_grammar_consistency(self) -> Dict[str, Any]:
+           """Check grammar consistency with observations."""
+           # Placeholder for grammar consistency checks
+           return {"status": "pass"}
+   ```
+
+**Day 5: Validation Skills Documentation**
+
+3. **Create Grammar Validation Skill**
+   ```bash
+   cat > skills/grammar/grammar-validation.md << 'EOF'
+   # Grammar Validation Methodology
+   
+   **Category**: grammar  
+   **Complexity**: intermediate  
+   **Prerequisites**: Grammar file (.ksy or .py), minimum 3 sample files
+   
+   ## Purpose
+   
+   Validate proposed grammar against multiple data samples to ensure correctness and completeness.
+   
+   ## Constitutional Requirement
+   
+   **Minimum 3 samples required for validation** per Constitution.
+   
+   ## When to Use
+   
+   - Before promoting grammar to Rulebook
+   - After grammar modifications
+   - When adding new samples
+   
+   ## Methodology
+   
+   ### Step 1: Prepare Samples
+   
+   Collect at least 3 diverse samples:
+   - Different message types
+   - Edge cases (minimum/maximum values)
+   - Different protocol states
+   
+   ### Step 2: Parse Testing
+   
+   For each sample:
+   1. Parse using grammar
+   2. Verify all fields extracted
+   3. Check no parse errors
+   4. Validate field values in expected ranges
+   
+   ### Step 3: Boundary Testing
+   
+   Test message/field boundaries:
+   - Start of message correctly identified
+   - End of message correctly identified
+   - No overlap or gaps
+   
+   ### Step 4: Negative Testing
+   
+   Test invalid inputs:
+   - Truncated messages
+   - Corrupted data
+   - Wrong protocol messages
+   
+   Grammar should fail gracefully.
+   
+   ### Step 5: Consistency Check
+   
+   Verify:
+   - Same fields parsed in all samples
+   - Field types consistent
+   - Offsets align across samples
+   
+   ## Example
+   
+   ### Input
+   - Grammar: `protocol_x_v1.ksy`
+   - Samples: `sample1.bin`, `sample2.bin`, `sample3.bin`
+   
+   ### Process
+   
+   ```python
+   validator = GrammarValidator(books_path)
+   validator.session_id = session_id
+   
+   result = validator.execute({
+       "grammar_path": "rulebook/grammars/protocol_x_v1.ksy",
+       "sample_paths": [
+           "data/sample1.bin",
+           "data/sample2.bin", 
+           "data/sample3.bin"
+       ],
+       "validation_type": "comprehensive"
+   })
+   ```
+   
+   ### Output
+   
+   ```json
+   {
+     "overall_status": "pass",
+     "passed": 3,
+     "failed": 0,
+     "results": [...]
+   }
+   ```
+   
+   ## Interpretation Guide
+   
+   - **All pass**: Grammar ready for promotion
+   - **1 fail**: Review failing sample, may be edge case
+   - **2+ fail**: Grammar needs refinement
+   
+   ## Common Pitfalls
+   
+   - Using <3 samples violates Constitution
+   - Not testing edge cases
+   - Ignoring negative test results
+   
+   ## Related Skills
+   
+   - [Format Inference](format-inference.md)
+   - [Sample Generation](sample-generation.md)
+   
+   ## References
+   
+   - Constitution: Validation Requirements
+   - Kaitai Struct: Grammar syntax
+   EOF
+   ```
+
+#### Deliverables
+- [ ] GrammarValidator agent with Constitutional compliance
+- [ ] ConsistencyChecker for result verification
+- [ ] Validation skills documented
+- [ ] Minimum 3-sample enforcement implemented
+- [ ] Unit tests with Constitutional compliance checks
+
+#### Validation Checkpoint
+```bash
+# Test validation agents
+poetry run pytest tests/agents/validation/ -v
+
+# Test Constitutional compliance
+# Should raise error with <3 samples
+poetry run pytest tests/test_constitutional_compliance.py -v
+```
+
+---
+
+### Week 7: Tools & Skills Expansion
+
+#### Objectives
+- Additional tool wrappers implemented
+- Skills library expanded to 12+ skills
+- Tool registry with unified interface
+- Documentation and examples complete
+
+#### Tasks
+
+**Day 1-2: Additional Tool Wrappers**
+
+1. **Binary Analysis Tools**
+   ```python
+   # reshark/tools/binary_tools.py
+   """
+   Wrappers for binary analysis tools.
+   """
+   
+   import subprocess
+   from typing import Dict, Any, List
+   from pathlib import Path
+   import logging
+   
+   logger = logging.getLogger(__name__)
+   
+   class FileWrapper:
+       """Wrapper for 'file' command."""
+       
+       def identify_type(self, file_path: Path) -> Dict[str, Any]:
+           """Identify file type."""
+           cmd = ["file", "-b", str(file_path)]
+           
+           try:
+               result = subprocess.run(
+                   cmd,
+                   capture_output=True,
+                   text=True,
+                   timeout=10
+               )
+               
+               return {
+                   "success": True,
+                   "file_type": result.stdout.strip()
+               }
+           except Exception as e:
+               return {"success": False, "error": str(e)}
+   
+   class StringsWrapper:
+       """Wrapper for 'strings' command."""
+       
+       def extract_strings(
+           self,
+           file_path: Path,
+           min_length: int = 4
+       ) -> Dict[str, Any]:
+           """Extract printable strings."""
+           cmd = ["strings", "-n", str(min_length), str(file_path)]
+           
+           try:
+               result = subprocess.run(
+                   cmd,
+                   capture_output=True,
+                   text=True,
+                   timeout=30
+               )
+               
+               strings = result.stdout.strip().split('\n')
+               
+               return {
+                   "success": True,
+                   "strings": [s for s in strings if s],
+                   "count": len([s for s in strings if s])
+               }
+           except Exception as e:
+               return {"success": False, "error": str(e)}
+   
+   class HexdumpWrapper:
+       """Wrapper for 'hexdump' command."""
+       
+       def dump_hex(
+           self,
+           file_path: Path,
+           length: int = 512,
+           format: str = "canonical"
+       ) -> Dict[str, Any]:
+           """Generate hexdump output."""
+           cmd = ["hexdump"]
+           
+           if format == "canonical":
+               cmd.append("-C")
+           
+           cmd.extend(["-n", str(length), str(file_path)])
+           
+           try:
+               result = subprocess.run(
+                   cmd,
+                   capture_output=True,
+                   text=True,
+                   timeout=10
+               )
+               
+               return {
+                   "success": True,
+                   "output": result.stdout
+               }
+           except Exception as e:
+               return {"success": False, "error": str(e)}
+   ```
+
+2. **Tools Registry**
+   ```python
+   # reshark/tools/registry.py
+   """
+   Central registry for all tool wrappers.
+   Provides unified interface for tool invocation.
+   """
+   
+   from typing import Dict, Any, Optional
+   import logging
+   
+   from reshark.tools.tshark_wrapper import TsharkWrapper
+   from reshark.tools.binary_tools import FileWrapper, StringsWrapper, HexdumpWrapper
+   
+   logger = logging.getLogger(__name__)
+   
+   class ToolsRegistry:
+       """Central registry for tool wrappers."""
+       
+       def __init__(self):
+           self._tools = {}
+           self._register_builtin_tools()
+       
+       def _register_builtin_tools(self):
+           """Register all built-in tool wrappers."""
+           self.register("tshark", TsharkWrapper())
+           self.register("file", FileWrapper())
+           self.register("strings", StringsWrapper())
+           self.register("hexdump", HexdumpWrapper())
+       
+       def register(self, name: str, tool: Any):
+           """Register a tool wrapper."""
+           self._tools[name] = tool
+           logger.info(f"Registered tool: {name}")
+       
+       def invoke(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+           """
+           Invoke tool with parameters.
+           
+           Args:
+               tool_name: Name of tool
+               params: Tool-specific parameters
+               
+           Returns:
+               Tool output
+           """
+           tool = self._tools.get(tool_name)
+           
+           if not tool:
+               return {
+                   "success": False,
+                   "error": f"Tool not found: {tool_name}"
+               }
+           
+           try:
+               # Route to appropriate tool method
+               if tool_name == "tshark":
+                   return self._invoke_tshark(tool, params)
+               elif tool_name == "file":
+                   return tool.identify_type(params["input"])
+               elif tool_name == "strings":
+                   return tool.extract_strings(
+                       params["input"],
+                       params.get("min_length", 4)
+                   )
+               elif tool_name == "hexdump":
+                   return tool.dump_hex(
+                       params["input"],
+                       params.get("length", 512),
+                       params.get("format", "canonical")
+                   )
+               else:
+                   return {"success": False, "error": f"Unknown tool: {tool_name}"}
+           
+           except Exception as e:
+               logger.error(f"Tool invocation error: {e}")
+               return {"success": False, "error": str(e)}
+       
+       def _invoke_tshark(self, tool: TsharkWrapper, params: Dict) -> Dict:
+           """Route tshark commands."""
+           command = params.get("command")
+           
+           if command == "conversations":
+               return tool.list_conversations(
+                   params["input"],
+                   params.get("protocol", "tcp")
+               )
+           elif command == "follow_stream":
+               return tool.follow_stream(
+                   params["input"],
+                   params.get("stream_type", "tcp"),
+                   params["stream_id"],
+                   params.get("format", "raw")
+               )
+           else:
+               return {"success": False, "error": f"Unknown tshark command: {command}"}
+   ```
+
+**Day 3-5: Skills Library Expansion**
+
+3. **Create Additional Skills**
+   
+   Create these skills to reach 12+ total:
+   
+   - `skills/protocol/field-extraction.md` - Extract specific protocol fields
+   - `skills/protocol/protocol-fsm-analysis.md` - Model protocol state machines
+   - `skills/pattern/entropy-analysis.md` - Detailed entropy methodology
+   - `skills/pattern/frequency-analysis.md` - Byte frequency distributions
+   - `skills/pattern/sequence-detection.md` - Repeated pattern detection
+   - `skills/binary/structure-recovery.md` - Infer data structures
+   - `skills/binary/type-inference.md` - Determine field types
+   - `skills/binary/boundary-detection.md` - Find message boundaries
+   - `skills/grammar/sample-generation.md` - Generate test samples
+   - `skills/grammar/format-inference.md` - Infer grammar from samples
+   
+   Each following the template established in Week 3.
+
+#### Deliverables
+- [ ] Binary analysis tool wrappers (file, strings, hexdump)
+- [ ] ToolsRegistry with unified interface
+- [ ] 12+ skills documented across all categories
+- [ ] Skills index in skills/README.md updated
+- [ ] Tool integration tests
+
+#### Validation Checkpoint
+```bash
+# Test all tool wrappers
+poetry run pytest tests/tools/ -v
+
+# Verify skills library
+ls skills/**/*.md | wc -l
+# Expected: >= 12 skill files
+
+# Test end-to-end with tools and skills
+# Via Cline: "Use entropy-analysis skill to analyze sample.pcap"
+```
+
+---
+
 ### Week 8: Phase 1 Integration
 
 #### Objectives
