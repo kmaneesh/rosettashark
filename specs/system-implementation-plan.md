@@ -2856,402 +2856,605 @@ ls skills/**/*.md | wc -l
 
 ---
 
-### Week 8: Phase 1 Integration
+### Week 8: Phase 1 Integration & Testing
 
 #### Objectives
-- Complete workflow orchestration script
-- End-to-end testing
-- Documentation finalization
-- Phase 1 success criteria validated
+- Complete HITL workflow integration
+- End-to-end testing with Cline
+- Performance validation
+- Phase 1 success criteria met
+- Prepare for Phase 2 autonomous mode
 
 #### Tasks
 
-1. **Main Orchestration Script** (Day 1-2)
-2. **Synthetic Protocol Generator** (Day 3)
-3. **End-to-End Testing** (Day 4)
-4. **Documentation** (Day 5)
+**Day 1-2: Integration Testing**
 
-#### Phase 1 Gate Review
-
-**Criteria:**
-- [ ] One complete protocol analysis successful
-- [ ] All Scopes functional with >80% test coverage
-- [ ] Constitutional compliance verified
-- [ ] Memory boundaries enforced
-- [ ] Documentation complete
-
-**Go/No-Go Decision**: If all criteria met, proceed to Phase 2. Otherwise, extend Phase 1 by 1-2 weeks.
-
----
-
-## PHASE 2: SCALE & AUTONOMY (WEEKS 9-16)
-
----
-
-### Week 9-10: LangGraph Integration
-
-#### Objectives
-- Install and configure LangGraph
-- Define workflow graph
-- Wrap Scopes as nodes
-- Test state management
-
-#### Tasks
-
-**Day 1-2: LangGraph Setup**
-
-1. **Install Dependencies**
-   ```bash
-   # Add LangGraph dependencies
-   poetry add langgraph langchain langchain-core
-   poetry add langgraph-checkpoint-sqlite  # For state persistence
-   ```
-
-2. **Create Graph Definition**
+1. **Complete HITL Workflow**
    ```python
-   # reshark/orchestration/graph.py
-   """
-   LangGraph workflow for autonomous protocol analysis.
+   # reshark/cli.py
+   """CLI entry point for reShark HITL mode."""
    
-   Phase 2 replaces manual orchestration scripts with
-   autonomous graph-based execution per Constitution Section 10.
-   """
-   
-   from typing import Dict, Any, Literal
-   from langgraph.graph import StateGraph, END
-   from langgraph.checkpoint.sqlite import SqliteSaver
+   import click
    from pathlib import Path
+   from reshark.agents.orchestration.session_manager import SessionManager
+   from reshark.agents.orchestration.task_orchestrator import TaskOrchestrator
+   from reshark.agents.interpreters.data_interpreter import DataInterpreter
+   from reshark.agents.interpreters.pattern_interpreter import PatternInterpreter
+   from reshark.agents.validation.grammar_validator import GrammarValidator
+   from reshark.tools.registry import ToolsRegistry
    
-   from reshark.scopes import (
-       Observer,
-       Theorist,
-       Validator,
-       Archivist
-   )
-   
-   class AnalysisState(Dict):
-       """
-       State object passed between graph nodes.
-       
-       Contains:
-       - session_id: Unique analysis session identifier
-       - pcaps: List of PCAP file paths
-       - observations: Observer results
-       - hypotheses: Theorist results
-       - validation: Validator results
-       - status: Current workflow status
-       """
+   @click.group()
+   def cli():
+       """reShark - Reverse Engineering Framework"""
        pass
    
-   def create_analysis_graph(workspace: Path) -> StateGraph:
-       """
-       Create LangGraph workflow for protocol analysis.
+   @cli.command()
+   @click.argument('artifact_path', type=click.Path(exists=True))
+   @click.option('--artifact-type', default='pcap', help='Type of artifact')
+   def analyze(artifact_path, artifact_type):
+       """Analyze artifact using complete HITL workflow."""
+       books_path = Path.cwd() / "books"
+       tools = ToolsRegistry()
        
-       Graph structure:
-       START → observe → theorize → validate → review → [archive | refine | END]
-       """
-       
-       # Initialize Scopes
-       notebook_path = workspace / "notebook"
-       rulebook_path = workspace / "rulebook"
-       cookbook_path = workspace / "cookbook"
-       
-       observer = Observer(notebook_path, rulebook_path, cookbook_path)
-       theorist = Theorist(notebook_path, rulebook_path, cookbook_path)
-       validator = Validator(notebook_path, rulebook_path, cookbook_path)
-       archivist = Archivist(notebook_path, rulebook_path, cookbook_path)
-       
-       # Define graph
-       workflow = StateGraph(AnalysisState)
-       
-       # Add nodes (Scope wrappers)
-       workflow.add_node("observe", lambda state: observe_node(observer, state))
-       workflow.add_node("theorize", lambda state: theorize_node(theorist, state))
-       workflow.add_node("validate", lambda state: validate_node(validator, state))
-       workflow.add_node("review", review_checkpoint_node)
-       workflow.add_node("archive", lambda state: archive_node(archivist, state))
-       
-       # Define edges
-       workflow.add_edge("observe", "theorize")
-       workflow.add_edge("theorize", "validate")
-       workflow.add_edge("validate", "review")
-       
-       # Conditional routing after review
-       workflow.add_conditional_edges(
-           "review",
-           route_after_review,
-           {
-               "promote": "archive",
-               "refine": "theorize",  # Loop back for refinement
-               "reject": END
+       # Create session
+       session_mgr = SessionManager(books_path, tools)
+       session = session_mgr.execute({
+           "operation": "create",
+           "metadata": {
+               "artifact": artifact_path,
+               "type": artifact_type
            }
-       )
-       
-       workflow.add_edge("archive", END)
-       
-       # Set entry point
-       workflow.set_entry_point("observe")
-       
-       # Add checkpointer for state persistence
-       checkpointer = SqliteSaver.from_conn_string(
-           str(workspace / "checkpoints.db")
-       )
-       
-       return workflow.compile(checkpointer=checkpointer)
-   
-   def observe_node(observer: Observer, state: AnalysisState) -> AnalysisState:
-       """Observation node wrapper."""
-       observer.session_id = state["session_id"]
-       
-       results = observer.execute({
-           "pcap_path": state["pcaps"][0],  # Golden PCAP
-           "session_id": state["session_id"]
        })
        
-       state["observations"] = results
-       state["status"] = "observed"
-       return state
-   
-   def theorize_node(theorist: Theorist, state: AnalysisState) -> AnalysisState:
-       """Theorist node wrapper."""
-       theorist.session_id = state["session_id"]
+       session_id = session["session_id"]
+       click.echo(f"Created session: {session_id}")
        
-       results = theorist.execute({
-           "session_id": state["session_id"]
-       })
+       # Initialize agents
+       data_interpreter = DataInterpreter(books_path, tools)
+       pattern_interpreter = PatternInterpreter(books_path, tools)
        
-       state["hypotheses"] = results
-       state["status"] = "theorized"
-       return state
-   
-   def validate_node(validator: Validator, state: AnalysisState) -> AnalysisState:
-       """Validator node wrapper."""
-       validator.session_id = state["session_id"]
-       
-       results = validator.execute({
-           "session_id": state["session_id"],
-           "validation_pcaps": state["pcaps"][1:]  # All except golden
-       })
-       
-       state["validation"] = results
-       state["status"] = "validated"
-       return state
-   
-   def review_checkpoint_node(state: AnalysisState) -> AnalysisState:
-       """
-       Human review checkpoint (Phase 2: can be automated).
-       
-       In Phase 2, this can become fully automated based on
-       validation confidence scores.
-       """
-       validation = state["validation"]
-       
-       # Auto-promote if confidence > 0.9 and all validations pass
-       if len(validation["data"]["passed"]) > 0:
-           hypotheses = state["hypotheses"]["hypotheses"]
-           passed_hyps = [hypotheses[i] for i in validation["data"]["passed"]]
-           
-           if all(h.get("confidence", 0) > 0.9 for h in passed_hyps):
-               state["review_decision"] = "promote"
-               state["status"] = "auto_approved"
-               return state
-       
-       # Otherwise, require human review (checkpoint)
-       state["review_decision"] = "review_required"
-       state["status"] = "pending_review"
-       return state
-   
-   def archive_node(archivist: Archivist, state: AnalysisState) -> AnalysisState:
-       """Archive node wrapper."""
-       archivist.session_id = state["session_id"]
-       
-       # Promote each validated hypothesis
-       for hyp_id in state["validation"]["data"]["passed"]:
-           archivist.execute({
-               "operation": "promote",
-               "session_id": state["session_id"],
-               "hypothesis_id": hyp_id
-           })
-       
-       # Archive session
-       archivist.execute({
-           "operation": "archive",
-           "session_id": state["session_id"]
-       })
-       
-       state["status"] = "completed"
-       return state
-   
-   def route_after_review(state: AnalysisState) -> Literal["promote", "refine", "reject"]:
-       """Route based on review decision."""
-       decision = state.get("review_decision", "reject")
-       
-       if decision == "promote":
-           return "promote"
-       elif decision == "refine":
-           return "refine"
-       else:
-           return "reject"
-   ```
-
-**Day 3-5: Integration and Testing**
-
-3. **Test Graph Execution**
-   ```python
-   # tests/test_langgraph.py
-   import pytest
-   from pathlib import Path
-   from reshark.orchestration.graph import create_analysis_graph
-   
-   def test_graph_construction(tmp_path):
-       """Test graph can be constructed."""
-       graph = create_analysis_graph(tmp_path)
-       assert graph is not None
-   
-   def test_graph_execution(tmp_path, sample_pcaps):
-       """Test graph executes end-to-end."""
-       graph = create_analysis_graph(tmp_path)
-       
-       initial_state = {
-           "session_id": "test-graph-001",
-           "pcaps": sample_pcaps,
-           "status": "initialized"
+       agent_registry = {
+           "DataInterpreter": data_interpreter,
+           "PatternInterpreter": pattern_interpreter
        }
        
-       # Execute graph
-       final_state = graph.invoke(initial_state)
+       # Execute workflow
+       orchestrator = TaskOrchestrator(books_path, tools, agent_registry)
+       orchestrator.session_id = session_id
        
-       assert final_state["status"] in ["completed", "pending_review"]
+       result = orchestrator.execute({
+           "workflow": "extract_and_analyze",
+           "artifact_path": artifact_path,
+           "artifact_type": artifact_type
+       })
+       
+       click.echo(f"Workflow status: {result['status']}")
+       click.echo(f"Results in: books/notebook/sessions/{session_id}")
+   
+   @cli.command()
+   @click.argument('grammar_path', type=click.Path(exists=True))
+   @click.argument('sample_paths', nargs=-1, type=click.Path(exists=True))
+   def validate_grammar(grammar_path, sample_paths):
+       """Validate grammar against samples (min 3)."""
+       if len(sample_paths) < 3:
+           click.echo("Error: Minimum 3 samples required (Constitutional requirement)")
+           return
+       
+       books_path = Path.cwd() / "books"
+       tools = ToolsRegistry()
+       
+       validator = GrammarValidator(books_path, tools)
+       
+       result = validator.execute({
+           "grammar_path": grammar_path,
+           "sample_paths": list(sample_paths),
+           "validation_type": "comprehensive"
+       })
+       
+       click.echo(f"Validation: {result['overall_status']}")
+       click.echo(f"Passed: {result['passed']}/{result['sample_count']}")
+   
+   if __name__ == '__main__':
+       cli()
+   ```
+
+**Day 3: Test Data Generation**
+
+2. **Synthetic Test Data**
+   ```python
+   # tests/fixtures/protocol_generator.py
+   """Generate synthetic protocol data for testing."""
+   
+   import struct
+   from pathlib import Path
+   from typing import List
+   
+   class SimpleProtocolGenerator:
+       """Generate simple binary protocol samples."""
+       
+       def generate_message(self, msg_type: int, payload: bytes) -> bytes:
+           """Generate single message."""
+           # Format: [magic:2][type:1][length:2][payload][checksum:1]
+           magic = b'\xAA\xBB'
+           length = len(payload)
+           
+           msg = magic + struct.pack('B', msg_type) + struct.pack('>H', length) + payload
+           
+           # Simple checksum
+           checksum = sum(msg) % 256
+           msg += struct.pack('B', checksum)
+           
+           return msg
+       
+       def generate_samples(self, output_dir: Path, count: int = 5):
+           """Generate multiple sample files."""
+           output_dir.mkdir(parents=True, exist_ok=True)
+           
+           payloads = [
+               b'Hello World',
+               b'Test Message',
+               b'\x00\x01\x02\x03',
+               b'A' * 100,
+               b'Short'
+           ]
+           
+           for i in range(count):
+               messages = []
+               for msg_type in [1, 2, 3]:
+                   msg = self.generate_message(msg_type, payloads[i % len(payloads)])
+                   messages.append(msg)
+               
+               sample_path = output_dir / f"sample_{i+1}.bin"
+               with open(sample_path, 'wb') as f:
+                   f.write(b''.join(messages))
+   ```
+
+**Day 4: End-to-End Testing**
+
+3. **Integration Test Suite**
+   ```python
+   # tests/integration/test_complete_workflow.py
+   """End-to-end integration tests."""
+   
+   import pytest
+   from pathlib import Path
+   from reshark.agents.orchestration.session_manager import SessionManager
+   from reshark.agents.orchestration.task_orchestrator import TaskOrchestrator
+   from reshark.agents.interpreters.data_interpreter import DataInterpreter
+   from reshark.agents.interpreters.pattern_interpreter import PatternInterpreter
+   from reshark.tools.registry import ToolsRegistry
+   
+   @pytest.fixture
+   def setup_environment(tmp_path):
+       """Setup test environment."""
+       books_path = tmp_path / "books"
+       books_path.mkdir()
+       
+       # Create directory structure
+       (books_path / "notebook" / "sessions").mkdir(parents=True)
+       (books_path / "skills").mkdir()
+       
+       tools = ToolsRegistry()
+       
+       return books_path, tools
+   
+   def test_complete_analysis_workflow(setup_environment, tmp_path):
+       """Test complete extract and analyze workflow."""
+       books_path, tools = setup_environment
+       
+       # Generate test data
+       from tests.fixtures.protocol_generator import SimpleProtocolGenerator
+       gen = SimpleProtocolGenerator()
+       test_file = tmp_path / "test_sample.bin"
+       gen.generate_samples(tmp_path, 1)
+       
+       # Create session
+       session_mgr = SessionManager(books_path, tools)
+       session = session_mgr.execute({"operation": "create"})
+       session_id = session["session_id"]
+       
+       # Setup agents
+       data_interp = DataInterpreter(books_path, tools)
+       pattern_interp = PatternInterpreter(books_path, tools)
+       
+       agent_registry = {
+           "DataInterpreter": data_interp,
+           "PatternInterpreter": pattern_interp
+       }
+       
+       # Execute workflow
+       orchestrator = TaskOrchestrator(books_path, tools, agent_registry)
+       orchestrator.session_id = session_id
+       
+       result = orchestrator.execute({
+           "workflow": "extract_and_analyze",
+           "artifact_path": str(test_file),
+           "artifact_type": "binary"
+       })
+       
+       assert result["status"] == "success"
+       assert "extraction" in result
+       assert "patterns" in result
+   
+   def test_constitutional_compliance(setup_environment):
+       """Test 3-sample minimum enforcement."""
+       books_path, tools = setup_environment
+       
+       from reshark.agents.validation.grammar_validator import GrammarValidator
+       from reshark.agents.base import AgentError
+       
+       validator = GrammarValidator(books_path, tools)
+       
+       # Should raise error with <3 samples
+       with pytest.raises(AgentError, match="Constitutional violation"):
+           validator.execute({
+               "grammar_path": "test.ksy",
+               "sample_paths": ["s1.bin", "s2.bin"],  # Only 2 samples
+               "validation_type": "parse"
+           })
+   ```
+
+**Day 5: Documentation & Performance Validation**
+
+4. **Performance Benchmarks**
+   ```python
+   # tests/performance/test_benchmarks.py
+   """Performance benchmarks for Phase 1."""
+   
+   import pytest
+   import time
+   
+   @pytest.mark.benchmark
+   def test_workflow_performance(setup_environment, benchmark):
+       """Benchmark complete workflow execution."""
+       # Target: <5 seconds for small sample
+       
+       def run_workflow():
+           # Run complete workflow
+           pass
+       
+       result = benchmark(run_workflow)
+       assert result < 5.0  # seconds
    ```
 
 #### Deliverables
-- [ ] LangGraph integrated
-- [ ] Workflow graph defined
-- [ ] Scope node wrappers implemented
-- [ ] State persistence functional
+- [ ] CLI interface for HITL workflows
+- [ ] Integration test suite with >80% coverage
+- [ ] Performance benchmarks passing
+- [ ] Synthetic test data generator
+- [ ] Documentation complete for Phase 1
+
+#### Phase 1 Gate Review
+
+**Success Criteria:**
+- [x] All agents implemented (Interpreters, Orchestration, Validation)
+- [x] Books system operational (Notebook, Rulebook, Cookbook, Skills)
+- [x] Tools registry with 4+ wrappers
+- [x] 12+ skills documented
+- [ ] Constitutional compliance enforced (3+ samples)
+- [ ] End-to-end workflow tested via Cline
+- [ ] Test coverage >80%
+- [ ] Performance: <5s for small samples
+
+**Go/No-Go Decision**: If all criteria met, proceed to Phase 2. Otherwise, extend Phase 1 by 1 week.
 
 ---
 
-### Week 11: Patternbook Implementation
+## PHASE 2: AUTONOMOUS MODE (WEEKS 9-16)
+
+### Phase 2 Overview
+
+**Objective**: Enable autonomous operation using OpenHands + Patternbook vector DB
+
+**Key Differences from Phase 1**:
+- Phase 1 (HITL): Human-guided with Cline, markdown skills read by LLM
+- Phase 2 (Autonomous): Self-directed with OpenHands, Patternbook semantic search
+
+**Architecture**:
+- OpenHands as autonomous agent orchestrator
+- Ollama for local LLM inference
+- Patternbook (Qdrant) for pattern storage and retrieval
+- Same agents/tools from Phase 1, new autonomous workflows
+
+---
+
+### Week 9: OpenHands Integration
 
 #### Objectives
-- Install Qdrant vector database
-- Implement embedding generation
-- Create similarity search API
-- Integrate with Theorist
+- Install and configure OpenHands
+- Connect to Ollama LLM
+- Integrate existing agents with OpenHands
+- Test autonomous execution
+
+#### Tasks
+
+**Day 1-2: OpenHands Setup**
+
+1. **Install OpenHands**
+   ```bash
+   # Clone OpenHands
+   cd /tmp
+   git clone https://github.com/All-Hands-AI/OpenHands.git
+   cd OpenHands
+   
+   # Build with Docker
+   docker build -t openhands:latest .
+   
+   # Or use Docker Compose (from docker/docker-compose.yml)
+   cd /path/to/reshark
+   docker-compose -f docker/docker-compose.yml up -d openhands
+   ```
+
+2. **Configure OpenHands**
+   ```yaml
+   # docker/docker-compose.yml
+   version: '3.8'
+   
+   services:
+     openhands:
+       image: openhands:latest
+       container_name: reshark-openhands
+       environment:
+         - LLM_PROVIDER=ollama
+         - LLM_BASE_URL=http://ollama:11434
+         - LLM_MODEL=deepseek-coder:33b
+         - WORKSPACE_BASE=/workspace
+       volumes:
+         - ../:/workspace
+         - openhands-data:/app/data
+       ports:
+         - "3000:3000"
+       depends_on:
+         - ollama
+     
+     ollama:
+       image: ollama/ollama:latest
+       container_name: reshark-ollama
+       volumes:
+         - ollama-models:/root/.ollama
+       ports:
+         - "11434:11434"
+   
+   volumes:
+     openhands-data:
+     ollama-models:
+   ```
+
+**Day 3-4: Agent Integration**
+
+3. **OpenHands Agent Adapter**
+   ```python
+   # reshark/autonomous/openhands_adapter.py
+   """Adapter for reShark agents in OpenHands."""
+   
+   from typing import Dict, Any
+   from pathlib import Path
+   import json
+   
+   class OpenHandsAdapter:
+       """Bridges reShark agents with OpenHands."""
+       
+       def __init__(self, books_path: Path):
+           self.books_path = books_path
+           self.agents = self._load_agents()
+       
+       def _load_agents(self):
+           """Load all reShark agents."""
+           from reshark.agents.interpreters.data_interpreter import DataInterpreter
+           from reshark.agents.interpreters.pattern_interpreter import PatternInterpreter
+           from reshark.agents.orchestration.task_orchestrator import TaskOrchestrator
+           from reshark.tools.registry import ToolsRegistry
+           
+           tools = ToolsRegistry()
+           
+           return {
+               "data_interpreter": DataInterpreter(self.books_path, tools),
+               "pattern_interpreter": PatternInterpreter(self.books_path, tools),
+               "orchestrator": TaskOrchestrator(self.books_path, tools, {})
+           }
+       
+       def execute_task(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+           """Execute task via appropriate agent."""
+           if task_type == "analyze_artifact":
+               return self._run_analysis(params)
+           elif task_type == "extract_patterns":
+               return self._extract_patterns(params)
+           else:
+               return {"error": f"Unknown task: {task_type}"}
+       
+       def _run_analysis(self, params: Dict[str, Any]) -> Dict[str, Any]:
+           """Run complete analysis workflow."""
+           orchestrator = self.agents["orchestrator"]
+           
+           result = orchestrator.execute({
+               "workflow": "extract_and_analyze",
+               "artifact_path": params["artifact_path"],
+               "artifact_type": params.get("artifact_type", "pcap")
+           })
+           
+           return result
+       
+       def _extract_patterns(self, params: Dict[str, Any]) -> Dict[str, Any]:
+           """Extract patterns from data."""
+           pattern_interp = self.agents["pattern_interpreter"]
+           
+           result = pattern_interp.execute({
+               "streams": params["streams"],
+               "analysis_type": "all"
+           })
+           
+           return result
+   ```
+
+4. **OpenHands Task Definition**
+   ```python
+   # reshark/autonomous/tasks.py
+   """Task definitions for OpenHands."""
+   
+   ANALYZE_ARTIFACT_TASK = """
+   Analyze the binary artifact at {artifact_path} using reShark agents.
+   
+   Steps:
+   1. Use DataInterpreter to extract data streams
+   2. Use PatternInterpreter to identify patterns
+   3. Write results to Notebook
+   4. Return summary of findings
+   
+   The agents are available via the OpenHandsAdapter at /workspace/reshark/autonomous/openhands_adapter.py
+   """
+   
+   def generate_analysis_task(artifact_path: str) -> str:
+       """Generate analysis task for OpenHands."""
+       return ANALYZE_ARTIFACT_TASK.format(artifact_path=artifact_path)
+   ```
+
+**Day 5: Testing**
+
+5. **Autonomous Execution Test**
+   ```python
+   # tests/autonomous/test_openhands_integration.py
+   """Test OpenHands autonomous execution."""
+   
+   import pytest
+   from reshark.autonomous.openhands_adapter import OpenHandsAdapter
+   
+   def test_autonomous_analysis(tmp_path):
+       """Test autonomous artifact analysis."""
+       books_path = tmp_path / "books"
+       books_path.mkdir()
+       (books_path / "notebook" / "sessions").mkdir(parents=True)
+       
+       adapter = OpenHandsAdapter(books_path)
+       
+       # Generate test data
+       test_file = tmp_path / "test.bin"
+       test_file.write_bytes(b"\xAA\xBB" + b"test data" * 100)
+       
+       result = adapter.execute_task("analyze_artifact", {
+           "artifact_path": str(test_file),
+           "artifact_type": "binary"
+       })
+       
+       assert result["status"] == "success"
+   ```
+
+#### Deliverables
+- [ ] OpenHands Docker container running
+- [ ] Ollama LLM connected
+- [ ] OpenHandsAdapter for agent integration
+- [ ] Autonomous task execution tested
+- [ ] Documentation for autonomous mode
+
+#### Validation Checkpoint
+```bash
+# Start OpenHands
+docker-compose -f docker/docker-compose.yml up -d
+
+# Test autonomous execution
+curl -X POST http://localhost:3000/api/task \
+  -d '{"task": "analyze test.bin", "workspace": "/workspace"}'
+
+# Verify results in Notebook
+ls books/notebook/sessions/
+```
+
+---
+
+### Week 10: Patternbook (Vector Database)
+
+#### Objectives
+- Install and configure Qdrant vector DB
+- Design pattern embedding schema
+- Implement pattern storage and retrieval
+- Integrate with autonomous workflows
 
 #### Tasks
 
 **Day 1-2: Qdrant Setup**
 
-1. **Add Qdrant to Docker Compose**
+1. **Install Qdrant**
    ```yaml
-   # docker/docker-compose.yml (Phase 2 additions)
+   # Add to docker/docker-compose.yml
    services:
-     # ... existing reshark service ...
-     
      qdrant:
        image: qdrant/qdrant:latest
+       container_name: reshark-qdrant
        ports:
          - "6333:6333"
          - "6334:6334"
        volumes:
-         - qdrant_data:/qdrant/storage
-       networks:
-         - isolated
+         - qdrant-storage:/qdrant/storage
    
    volumes:
-     qdrant_data:
+     qdrant-storage:
    ```
 
-2. **Install Qdrant Client**
+2. **Python Client**
    ```bash
-   poetry add qdrant-client
-   poetry add sentence-transformers  # For embeddings
+   poetry add qdrant-client sentence-transformers
    ```
 
-**Day 3-5: Patternbook Implementation**
+**Day 3-4: Patternbook Implementation**
 
-3. **Create Patternbook Class**
+3. **Pattern Storage Agent**
    ```python
-   # reshark/memory/patternbook.py
-   """
-   Patternbook: Vector similarity memory for protocol patterns.
+   # reshark/books/patternbook/pattern_store.py
+   """Patternbook - Vector database for patterns."""
    
-   Per Constitution Section 3.3: Patternbook is NON-AUTHORITATIVE.
-   Suggestions must be validated before use.
-   
-   Phase 2 only.
-   """
-   
-   from typing import List, Dict, Any, Optional
-   import numpy as np
+   from typing import Dict, Any, List
    from qdrant_client import QdrantClient
-   from qdrant_client.models import (
-       Distance,
-       VectorParams,
-       PointStruct,
-       Filter,
-       FieldCondition,
-       MatchValue
-   )
+   from qdrant_client.models import Distance, VectorParams, PointStruct
    from sentence_transformers import SentenceTransformer
+   import hashlib
    import logging
    
    logger = logging.getLogger(__name__)
    
    class Patternbook:
-       """
-       Vector similarity memory for protocol patterns.
+       """Vector database for storing and retrieving patterns."""
        
-       WARNING: All suggestions from Patternbook are ADVISORY ONLY.
-       They MUST be validated before being treated as truth.
-       """
-       
-       def __init__(
-           self,
-           qdrant_url: str = "http://localhost:6333",
-           embedding_model: str = "all-MiniLM-L6-v2"
-       ):
+       def __init__(self, qdrant_url: str = "http://localhost:6333"):
            self.client = QdrantClient(url=qdrant_url)
-           self.collection_name = "protocol_patterns"
-           self.embedding_model = SentenceTransformer(embedding_model)
-           self.embedding_dim = 384  # all-MiniLM-L6-v2 dimension
-           
-           # Initialize collection
+           self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+           self.collection_name = "patterns"
            self._init_collection()
        
        def _init_collection(self):
-           """Initialize Qdrant collection if not exists."""
-           try:
-               self.client.get_collection(self.collection_name)
-               logger.info(f"Collection {self.collection_name} already exists")
-           except Exception:
+           """Initialize Qdrant collection."""
+           collections = self.client.get_collections().collections
+           
+           if not any(c.name == self.collection_name for c in collections):
                self.client.create_collection(
                    collection_name=self.collection_name,
                    vectors_config=VectorParams(
-                       size=self.embedding_dim,
+                       size=384,  # all-MiniLM-L6-v2 dimension
                        distance=Distance.COSINE
                    )
                )
-               logger.info(f"Created collection {self.collection_name}")
+               logger.info(f"Created collection: {self.collection_name}")
        
-       def store_pattern(
-           self,
-           pattern_id: str,
-           observations: Dict[str, Any],
-           metadata: Dict[str, Any]
-       ) -> None:
+       def store_pattern(self, pattern: Dict[str, Any]) -> str:
            """
-           Store protocol pattern embedding.
+           Store pattern with embedding.
            
            Args:
-               pattern_id: Unique pattern identifier
-               observations: Observer output to embed
-               metadata: Additional metadata (protocol name, session, etc.)
+               pattern: {
+                   "type": "entropy" | "sequence" | "structure",
+                   "description": Text description,
+                   "data": Pattern data,
+                   "metadata": Additional context
+               }
+           
+           Returns:
+               Pattern ID
            """
-           # Generate embedding from observations
-           embedding = self._embed_observations(observations)
+           # Generate embedding from description
+           embedding = self.encoder.encode(pattern["description"]).tolist()
+           
+           # Generate ID from pattern content
+           pattern_id = hashlib.sha256(
+               str(pattern["data"]).encode()
+           ).hexdigest()[:16]
            
            # Store in Qdrant
            self.client.upsert(
@@ -3259,747 +3462,1057 @@ ls skills/**/*.md | wc -l
                points=[
                    PointStruct(
                        id=pattern_id,
-                       vector=embedding.tolist(),
-                       payload={
-                           **metadata,
-                           "observation_summary": self._summarize_observations(observations)
-                       }
+                       vector=embedding,
+                       payload=pattern
                    )
                ]
            )
            
            logger.info(f"Stored pattern: {pattern_id}")
+           return pattern_id
        
-       def find_similar(
+       def search_patterns(
            self,
-           observations: Dict[str, Any],
-           top_k: int = 5,
-           min_score: float = 0.7
-       ) -> List[Dict]:
+           query: str,
+           pattern_type: str = None,
+           limit: int = 5
+       ) -> List[Dict[str, Any]]:
            """
-           Find similar protocol patterns.
+           Search for similar patterns.
            
            Args:
-               observations: Current observations to match
-               top_k: Number of results to return
-               min_score: Minimum similarity score (0-1)
-               
-           Returns:
-               List of similar patterns with DISCLAIMER
-           """
-           # Embed query observations
-           query_embedding = self._embed_observations(observations)
+               query: Natural language query
+               pattern_type: Filter by pattern type
+               limit: Maximum results
            
-           # Search Qdrant
+           Returns:
+               List of matching patterns
+           """
+           # Generate query embedding
+           query_vector = self.encoder.encode(query).tolist()
+           
+           # Build filter
+           query_filter = None
+           if pattern_type:
+               from qdrant_client.models import Filter, FieldCondition, MatchValue
+               query_filter = Filter(
+                   must=[
+                       FieldCondition(
+                           key="type",
+                           match=MatchValue(value=pattern_type)
+                       )
+                   ]
+               )
+           
+           # Search
            results = self.client.search(
                collection_name=self.collection_name,
-               query_vector=query_embedding.tolist(),
-               limit=top_k,
-               score_threshold=min_score
+               query_vector=query_vector,
+               query_filter=query_filter,
+               limit=limit
            )
            
-           # Format results with CONSTITUTIONAL WARNING
-           similar_patterns = []
-           for r in results:
-               similar_patterns.append({
+           patterns = [
+               {
                    "id": r.id,
                    "score": r.score,
-                   "protocol": r.payload.get("protocol_name", "unknown"),
-                   "summary": r.payload.get("observation_summary", ""),
-                   "DISCLAIMER": "SUGGESTION ONLY - MUST BE VALIDATED",
-                   "constitutional_authority": "Section 3.3 - Non-Authoritative"
-               })
+                   **r.payload
+               }
+               for r in results
+           ]
            
-           logger.info(f"Found {len(similar_patterns)} similar patterns")
-           return similar_patterns
+           logger.info(f"Found {len(patterns)} patterns for query: {query}")
+           return patterns
        
-       def _embed_observations(self, observations: Dict[str, Any]) -> np.ndarray:
-           """
-           Convert observations to embedding vector.
-           
-           Uses statistical features from observations:
-           - Entropy distribution
-           - Control byte positions
-           - Message length statistics
-           """
-           # Create textual summary for embedding
-           summary_parts = []
-           
-           # Entropy patterns
-           entropy_map = observations.get("entropy_map", {})
-           low_entropy = [pos for pos, e in entropy_map.items() if e < 2.0]
-           high_entropy = [pos for pos, e in entropy_map.items() if e > 6.0]
-           
-           summary_parts.append(f"Low entropy positions: {len(low_entropy)}")
-           summary_parts.append(f"High entropy positions: {len(high_entropy)}")
-           
-           # Control bytes
-           control_bytes = observations.get("control_bytes", [])
-           summary_parts.append(f"Control bytes at positions: {control_bytes[:5]}")
-           
-           # Message lengths
-           lengths = observations.get("message_lengths", {})
-           summary_parts.append(
-               f"Message length range: {lengths.get('min')}-{lengths.get('max')}"
+       def get_pattern(self, pattern_id: str) -> Dict[str, Any]:
+           """Retrieve specific pattern by ID."""
+           results = self.client.retrieve(
+               collection_name=self.collection_name,
+               ids=[pattern_id]
            )
            
-           # Invariants
-           invariants = observations.get("invariants", [])
-           summary_parts.append(f"Fixed positions: {len(invariants)}")
-           
-           summary_text = ". ".join(summary_parts)
-           
-           # Generate embedding
-           embedding = self.embedding_model.encode(summary_text)
-           return embedding
-       
-       def _summarize_observations(self, observations: Dict[str, Any]) -> str:
-           """Create human-readable summary of observations."""
-           entropy_map = observations.get("entropy_map", {})
-           control_bytes = observations.get("control_bytes", [])
-           invariants = observations.get("invariants", [])
-           
-           return (
-               f"{len(control_bytes)} control bytes, "
-               f"{len(invariants)} invariants, "
-               f"entropy range {min(entropy_map.values()):.2f}-{max(entropy_map.values()):.2f}"
-           )
+           if results:
+               return results[0].payload
+           return None
    ```
 
-4. **Integrate with Theorist**
+**Day 5: Integration with Agents**
+
+4. **Pattern-Aware Interpreter**
    ```python
-   # Modify Theorist to use Patternbook suggestions
-   # (additions to theorist.py)
+   # reshark/agents/interpreters/autonomous_pattern_interpreter.py
+   """Pattern interpreter with Patternbook integration."""
    
-   from reshark.memory.patternbook import Patternbook
+   from reshark.agents.interpreters.pattern_interpreter import PatternInterpreter
+   from reshark.books.patternbook.pattern_store import Patternbook
    
-   class Theorist(Scope):
-       def __init__(self, notebook_path, rulebook_path, cookbook_path, 
-                    use_patternbook: bool = True):
-           super().__init__(notebook_path, rulebook_path, cookbook_path)
-           self.patternbook = Patternbook() if use_patternbook else None
+   class AutonomousPatternInterpreter(PatternInterpreter):
+       """Pattern interpreter with vector DB for autonomous mode."""
        
-       def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-           self.session_id = inputs["session_id"]
+       def __init__(self, books_path, tools_registry=None, patternbook=None):
+           super().__init__(books_path, tools_registry)
+           self.patternbook = patternbook or Patternbook()
+       
+       def execute(self, inputs):
+           """Execute with pattern storage."""
+           # Run normal pattern analysis
+           result = super().execute(inputs)
            
-           # Read observations
-           observations = self.read_notebook("observations")
+           # Store patterns in Patternbook
+           if result.get("entropy"):
+               for pos, entropy in result["entropy"].items():
+                   if entropy > 0.8:  # High entropy
+                       self.patternbook.store_pattern({
+                           "type": "entropy",
+                           "description": f"High entropy at position {pos}: {entropy:.2f}",
+                           "data": {"position": pos, "entropy": entropy},
+                           "metadata": {"session": self.session_id}
+                       })
            
-           # Generate base hypotheses
-           hypotheses = []
-           hypotheses.extend(self._hypothesize_boundaries(observations))
-           hypotheses.extend(self._hypothesize_message_types(observations))
-           hypotheses.extend(self._hypothesize_fields(observations))
-           
-           # PHASE 2: Use Patternbook for analogical hints
-           if self.patternbook:
-               similar = self.patternbook.find_similar(
-                   observations.get("data", {}),
-                   top_k=3
-               )
-               
-               if similar:
-                   # Log analogies (but DO NOT treat as truth)
-                   self._log_evidence({
-                       "method": "analogical_reasoning",
-                       "source": "Patternbook",
-                       "similar_protocols": [s["protocol"] for s in similar],
-                       "DISCLAIMER": similar[0]["DISCLAIMER"],
-                       "action": "Used as inspiration only, not as fact"
+           if result.get("sequences"):
+               for seq in result["sequences"]:
+                   self.patternbook.store_pattern({
+                       "type": "sequence",
+                       "description": f"Repeated sequence: {seq['sequence'][:20]}... (count: {seq['count']})",
+                       "data": seq,
+                       "metadata": {"session": self.session_id}
                    })
-                   
-                   # Generate additional hypotheses inspired by analogies
-                   # (but still requires validation)
-                   analogy_hyps = self._generate_from_analogies(
-                       observations,
-                       similar
-                   )
-                   hypotheses.extend(analogy_hyps)
            
-           # Write to Notebook
-           self.write_notebook("hypotheses", hypotheses)
-           
-           return {"hypotheses": hypotheses}
+           return result
+       
+       def find_similar_patterns(self, query: str) -> List:
+           """Search for similar patterns in past analyses."""
+           return self.patternbook.search_patterns(query, limit=10)
    ```
 
 #### Deliverables
-- [ ] Qdrant running and accessible
-- [ ] Patternbook class implemented
-- [ ] Embedding generation functional
-- [ ] Theorist integration complete
-- [ ] Constitutional disclaimers present
+- [ ] Qdrant vector database running
+- [ ] Patternbook storage and retrieval
+- [ ] Pattern embedding with sentence transformers
+- [ ] Autonomous agents storing patterns
+- [ ] Pattern search tested
+
+#### Validation Checkpoint
+```bash
+# Test Patternbook
+poetry run pytest tests/patternbook/ -v
+
+# Verify Qdrant
+curl http://localhost:6333/collections
+
+# Search patterns
+poetry run python -c "from reshark.books.patternbook.pattern_store import Patternbook; \
+  pb = Patternbook(); \
+  print(pb.search_patterns('high entropy positions'))"
+```
 
 ---
 
-### Week 12: Scope Adaptation for Phase 2
+# Weeks 11-16 Content for system-implementation-plan.md
 
-#### Objectives
-- Refactor Scopes for LangGraph compatibility
-- Add state management
-- Implement progress tracking
-- Optimize for concurrent execution
+### Week 11-12: Autonomous Workflow Refinement
 
-#### Tasks
-
-1. **State Management** (Day 1-2)
-2. **Progress Tracking** (Day 3)
-3. **Concurrent Execution** (Day 4-5)
-
----
-
-### Week 13: Multi-Protocol Support
-
-#### Objectives
-- Parallel analysis of multiple protocols
-- Resource management
-- Session isolation
-- Results aggregation
+#### Objectives (Week 11)
+- Advanced autonomous workflows with OpenHands
+- Multi-sample analysis automation
+- Grammar generation from patterns
+- Performance optimization
 
 #### Tasks
 
-1. **Parallel Execution Framework** (Day 1-3)
+**Day 1-3: Autonomous Grammar Generation**
+
+1. **Grammar Generation Workflow**
    ```python
-   # reshark/orchestration/multi_protocol.py
-   """
-   Multi-protocol analysis orchestration.
+   # reshark/autonomous/workflows/grammar_generation.py
+   """Autonomous Kaitai Struct grammar generation."""
    
-   Phase 2: Scale to 5+ concurrent protocol analyses.
-   """
-   
-   from typing import List, Dict, Any
+   from typing import Dict, Any, List
    from pathlib import Path
-   import asyncio
-   from concurrent.futures import ProcessPoolExecutor
    
-   from reshark.orchestration.graph import create_analysis_graph
-   
-   class MultiProtocolOrchestrator:
-       """
-       Orchestrates concurrent analysis of multiple protocols.
+   class GrammarGenerator:
+       """Generate Kaitai Struct grammars from patterns."""
        
-       Per Constitution Section 10.2: Phase 2 scales to multiple
-       concurrent analyses while maintaining constitutional compliance.
-       """
-       
-       def __init__(self, workspace: Path, max_concurrent: int = 5):
-           self.workspace = workspace
-           self.max_concurrent = max_concurrent
-           self.sessions: Dict[str, Dict[str, Any]] = {}
-       
-       async def analyze_protocols(
+       def generate_from_patterns(
            self,
-           protocol_configs: List[Dict[str, Any]]
-       ) -> Dict[str, Any]:
+           patterns: List[Dict],
+           protocol_name: str
+       ) -> str:
            """
-           Analyze multiple protocols concurrently.
+           Generate .ksy grammar from identified patterns.
            
            Args:
-               protocol_configs: List of protocol configurations,
-                   each containing:
-                   - session_id: Unique identifier
-                   - pcaps: List of PCAP paths
-                   - protocol_name: Optional name
+               patterns: List of patterns from Patternbook
+               protocol_name: Name for the grammar
            
            Returns:
-               Dictionary of results per session_id
+               Kaitai Struct YAML content
            """
-           # Create analysis tasks
-           tasks = []
-           for config in protocol_configs[:self.max_concurrent]:
-               task = self._analyze_single_protocol(config)
-               tasks.append(task)
+           grammar = {
+               "meta": {
+                   "id": protocol_name.lower().replace(" ", "_"),
+                   "title": protocol_name,
+                   "file-extension": ["bin", "dat"],
+                   "endian": "be"  # Default big-endian
+               },
+               "seq": []
+           }
            
-           # Execute concurrently
-           results = await asyncio.gather(*tasks, return_exceptions=True)
+           # Generate fields from patterns
+           for idx, pattern in enumerate(patterns):
+               if pattern["type"] == "sequence":
+                   # Fixed sequence = magic/constant field
+                   grammar["seq"].append({
+                       "id": f"magic_{idx}",
+                       "contents": pattern["data"]["sequence"],
+                       "doc": f"Magic bytes: {pattern['description']}"
+                   })
+               elif pattern["type"] == "entropy":
+                   # High entropy = variable data
+                   if pattern["data"]["entropy"] > 0.9:
+                       grammar["seq"].append({
+                           "id": f"payload_{idx}",
+                           "size": 1,  # Placeholder
+                           "doc": f"Variable data: {pattern['description']}"
+                       })
            
-           # Aggregate results
+           # Convert to YAML string
+           import yaml
+           return yaml.dump(grammar, default_flow_style=False)
+   ```
+
+**Day 4-5: Multi-Session Analysis**
+
+2. **Cross-Session Pattern Recognition**
+   ```python
+   # reshark/autonomous/workflows/multi_session.py
+   """Analyze patterns across multiple sessions."""
+   
+   from reshark.books.patternbook.pattern_store import Patternbook
+   from typing import List, Dict
+   
+   class MultiSessionAnalyzer:
+       """Analyze patterns across analysis sessions."""
+       
+       def __init__(self, patternbook: Patternbook):
+           self.patternbook = patternbook
+       
+       def find_common_patterns(
+           self,
+           session_ids: List[str],
+           min_occurrences: int = 3
+       ) -> List[Dict]:
+           """
+           Find patterns appearing in multiple sessions.
+           
+           Constitutional requirement: >= 3 sessions for validation.
+           """
+           if len(session_ids) < 3:
+               raise ValueError("Minimum 3 sessions required")
+           
+           # Search patterns for each session
+           all_patterns = {}
+           
+           for session_id in session_ids:
+               patterns = self.patternbook.search_patterns(
+                   f"session:{session_id}",
+                   limit=100
+               )
+               
+               for p in patterns:
+                   key = (p["type"], p["data"].get("sequence", ""))
+                   if key not in all_patterns:
+                       all_patterns[key] = []
+                   all_patterns[key].append(p)
+           
+           # Filter to patterns appearing >= min_occurrences
+           common_patterns = [
+               {
+                   "pattern": patterns[0],
+                   "occurrences": len(patterns),
+                   "sessions": [p["metadata"]["session"] for p in patterns]
+               }
+               for patterns in all_patterns.values()
+               if len(patterns) >= min_occurrences
+           ]
+           
+           return common_patterns
+   ```
+
+#### Week 12 Objectives
+- Automated validation and refinement
+- Performance benchmarking
+- Scalability testing
+
+#### Tasks (Week 12)
+
+**Day 1-2: Automated Validation Loop**
+
+3. **Auto-Validation Workflow**
+   ```python
+   # reshark/autonomous/workflows/auto_validation.py
+   """Automated grammar validation and refinement."""
+   
+   from reshark.agents.validation.grammar_validator import GrammarValidator
+   from reshark.autonomous.workflows.grammar_generation import GrammarGenerator
+   
+   class AutoValidator:
+       """Autonomous validation with auto-refinement."""
+       
+       def __init__(self, validator: GrammarValidator, generator: GrammarGenerator):
+           self.validator = validator
+           self.generator = generator
+       
+       def validate_and_refine(
+           self,
+           grammar_path: str,
+           samples: List[str],
+           max_iterations: int = 3
+       ) -> Dict:
+           """
+           Validate grammar and auto-refine if needed.
+           
+           Args:
+               grammar_path: Path to grammar file
+               samples: Sample files (minimum 3)
+               max_iterations: Max refinement attempts
+           
+           Returns:
+               Final validation result
+           """
+           for iteration in range(max_iterations):
+               # Validate
+               result = self.validator.execute({
+                   "grammar_path": grammar_path,
+                   "sample_paths": samples,
+                   "validation_type": "comprehensive"
+               })
+               
+               if result["overall_status"] == "pass":
+                   return {
+                       "status": "success",
+                       "iterations": iteration + 1,
+                       "result": result
+                   }
+               
+               # Auto-refine grammar
+               errors = [r for r in result["results"] if r["status"] == "fail"]
+               refined_grammar = self._refine_grammar(grammar_path, errors)
+               
+               # Write refined grammar
+               Path(grammar_path).write_text(refined_grammar)
+           
            return {
-               config["session_id"]: result
-               for config, result in zip(protocol_configs, results)
+               "status": "failed",
+               "iterations": max_iterations,
+               "result": result
            }
        
-       async def _analyze_single_protocol(
+       def _refine_grammar(self, grammar_path: str, errors: List) -> str:
+           """Refine grammar based on validation errors."""
+           # Placeholder: Would use LLM to refine grammar
+           return Path(grammar_path).read_text()
+   ```
+
+**Day 3-5: Performance Optimization**
+
+4. **Benchmarking Suite**
+   ```python
+   # tests/performance/test_autonomous_performance.py
+   """Performance tests for autonomous mode."""
+   
+   import pytest
+   import time
+   
+   @pytest.mark.benchmark
+   class TestAutonomousPerformance:
+       """Phase 2 performance benchmarks."""
+       
+       def test_pattern_search_speed(self, patternbook, benchmark):
+           """Pattern search should be <100ms."""
+           
+           def search():
+               return patternbook.search_patterns("test query", limit=10)
+           
+           result = benchmark(search)
+           assert benchmark.stats['mean'] < 0.1  # 100ms
+       
+       def test_end_to_end_analysis(self, test_sample, benchmark):
+           """Complete analysis should be <30s."""
+           
+           def analyze():
+               # Run complete autonomous workflow
+               pass
+           
+           result = benchmark(analyze)
+           assert benchmark.stats['mean'] < 30.0  # 30 seconds
+       
+       def test_multi_session_scaling(self):
+           """Test scaling to 100+ sessions."""
+           # Generate 100 test sessions
+           # Verify pattern search still <100ms
+           pass
+   ```
+
+#### Deliverables (Weeks 11-12)
+- [ ] Autonomous grammar generation
+- [ ] Multi-session pattern recognition
+- [ ] Auto-validation with refinement
+- [ ] Performance benchmarks passing
+- [ ] Scalability validated (100+ sessions)
+
+---
+
+### Week 13: Advanced Analysis Features
+
+#### Objectives
+- Protocol state machine inference
+- Advanced pattern analysis
+- Data structure recovery
+- Field type inference
+
+#### Tasks
+
+**Day 1-2: State Machine Inference**
+
+1. **FSM Analyzer**
+   ```python
+   # reshark/agents/analysis/fsm_analyzer.py
+   """Infer protocol finite state machines from conversations."""
+   
+   from typing import Dict, Any, List, Tuple
+   import networkx as nx
+   
+   class FSMAnalyzer:
+       """Infer protocol state machines."""
+       
+       def analyze_conversations(
            self,
-           config: Dict[str, Any]
+           conversations: List[Dict]
        ) -> Dict[str, Any]:
-           """Analyze single protocol in isolated session."""
-           graph = create_analysis_graph(self.workspace)
+           """
+           Infer FSM from request/response patterns.
            
-           initial_state = {
-               "session_id": config["session_id"],
-               "pcaps": config["pcaps"],
-               "protocol_name": config.get("protocol_name", "unknown"),
-               "status": "initialized"
+           Returns:
+               State machine graph and transition rules
+           """
+           # Build state graph
+           G = nx.DiGraph()
+           
+           for conv in conversations:
+               messages = conv.get("messages", [])
+               
+               for i in range(len(messages) - 1):
+                   current = self._classify_message(messages[i])
+                   next_msg = self._classify_message(messages[i + 1])
+                   
+                   # Add edge
+                   if G.has_edge(current, next_msg):
+                       G[current][next_msg]['weight'] += 1
+                   else:
+                       G.add_edge(current, next_msg, weight=1)
+           
+           return {
+               "states": list(G.nodes()),
+               "transitions": [
+                   {
+                       "from": u,
+                       "to": v,
+                       "count": data['weight']
+                   }
+                   for u, v, data in G.edges(data=True)
+               ],
+               "graph": nx.node_link_data(G)
            }
+       
+       def _classify_message(self, message: Dict) -> str:
+           """Classify message into state."""
+           # Simple classification based on first byte
+           data = message.get("data", b"")
+           if len(data) > 0:
+               return f"state_{data[0]:02x}"
+           return "unknown"
+   ```
+
+**Day 3-4: Structure Recovery**
+
+2. **Data Structure Inference**
+   ```python
+   # reshark/agents/analysis/structure_recovery.py
+   """Recover C-like data structures from binary data."""
+   
+   from typing import List, Dict
+   import struct
+   
+   class StructureRecovery:
+       """Infer data structures from aligned binary data."""
+       
+       def infer_structure(
+           self,
+           data_samples: List[bytes],
+           alignment: int = 1
+       ) -> Dict:
+           """
+           Infer structure definition from samples.
            
-           # Execute graph (LangGraph handles state management)
-           final_state = await asyncio.to_thread(
-               graph.invoke,
-               initial_state
-           )
+           Returns:
+               C-like structure definition
+           """
+           if not data_samples:
+               return {}
            
-           return final_state
+           min_len = min(len(d) for d in data_samples)
+           fields = []
+           offset = 0
+           
+           while offset < min_len:
+               field = self._infer_field_at_offset(data_samples, offset)
+               fields.append(field)
+               offset += field["size"]
+           
+           return {
+               "name": "inferred_struct",
+               "size": offset,
+               "fields": fields
+           }
+       
+       def _infer_field_at_offset(
+           self,
+           samples: List[bytes],
+           offset: int
+       ) -> Dict:
+           """Infer field type at given offset."""
+           values = [s[offset:offset+8] for s in samples if len(s) > offset+7]
+           
+           # Try different types
+           for size, fmt, type_name in [
+               (1, 'B', 'uint8'),
+               (2, 'H', 'uint16'),
+               (4, 'I', 'uint32'),
+               (8, 'Q', 'uint64')
+           ]:
+               try:
+                   parsed = [struct.unpack(f'>{fmt}', v[:size])[0] for v in values]
+                   
+                   # Check if values make sense
+                   if self._values_look_valid(parsed, size):
+                       return {
+                           "offset": offset,
+                           "size": size,
+                           "type": type_name,
+                           "sample_values": parsed[:5]
+                       }
+               except:
+                   continue
+           
+           # Default to byte array
+           return {
+               "offset": offset,
+               "size": 1,
+               "type": "uint8",
+               "sample_values": [v[0] for v in values[:5]]
+           }
+       
+       def _values_look_valid(self, values: List[int], size: int) -> bool:
+           """Heuristic: do values look like meaningful integers?"""
+           # Not all zeros or all 0xFF
+           if all(v == 0 for v in values):
+               return False
+           if all(v == (2**(size*8) - 1) for v in values):
+               return False
+           return True
    ```
 
-2. **Resource Management** (Day 4-5)
+**Day 5: Integration**
 
----
-
-### Week 14: Performance Optimization
-
-#### Objectives
-- Profile and optimize bottlenecks
-- Implement caching
-- Parallel PCAP processing
-- Memory optimization
-
-#### Tasks
-
-1. **Profiling** (Day 1-2)
-2. **Caching Strategy** (Day 3)
-3. **Optimization** (Day 4-5)
-
----
-
-### Week 15: Advanced Features
-
-#### Objectives
-- Autonomous checkpoint system
-- Learning from validation feedback
-- Protocol family clustering
-- Advanced Patternbook queries
-
-#### Tasks
-
-1. **Autonomous Checkpoints** (Day 1-2)
-   - Replace human review with confidence thresholds
-   - Implement escalation for low-confidence cases
-   - Log all automated decisions
-
-2. **Learning System** (Day 3-4)
-   - Store validation outcomes in Patternbook
-   - Update similarity models based on success rates
-   - Cross-protocol pattern recognition
-
-3. **Clustering** (Day 5)
-   - Group similar protocols
-   - Identify protocol families
-   - Generate family-specific hypotheses
-
----
-
-### Week 16: Finalization and Release
-
-#### Objectives
-- Comprehensive testing
-- Documentation completion
-- Performance benchmarking
-- Open-source release preparation
-
-#### Tasks
-
-**Day 1-2: Testing**
-
-1. **Full System Testing**
+3. **Advanced Analysis Skill**
    ```bash
-   # Run comprehensive test suite
-   poetry run pytest tests/ -v --cov=reshark --cov-report=html
+   cat > skills/advanced/structure-recovery.md << 'EOF'
+   # Data Structure Recovery
    
-   # Target: >80% coverage
+   **Category**: advanced  
+   **Complexity**: advanced  
+   **Prerequisites**: Multiple aligned binary samples
    
-   # Constitutional compliance
-   poetry run python scripts/check_compliance.py
+   ## Purpose
    
-   # Performance benchmarks
-   poetry run python scripts/benchmark.py
+   Infer C-like data structure definitions from binary data samples.
+   
+   ## Methodology
+   
+   ### Step 1: Alignment Detection
+   
+   - Identify common offsets across samples
+   - Detect structure boundaries
+   - Find padding bytes
+   
+   ### Step 2: Field Type Inference
+   
+   For each offset:
+   - Try standard sizes (1, 2, 4, 8 bytes)
+   - Test as integer types (uint8/16/32/64)
+   - Check value distributions
+   - Identify constants vs variables
+   
+   ### Step 3: Structure Definition
+   
+   Generate C-like struct:
+   ```c
+   struct protocol_header {
+       uint8_t magic[2];
+       uint16_t length;
+       uint32_t timestamp;
+       uint8_t payload[];
+   };
+   ```
+   
+   ## Tools
+   
+   - StructureRecovery agent
+   - Alignment analyzer
+   - Type inference engine
+   
+   ## Related Skills
+   
+   - [Boundary Detection](../binary/boundary-detection.md)
+   - [Type Inference](../binary/type-inference.md)
+   EOF
    ```
 
-2. **Real-World Protocol Testing**
-   - Analyze 3+ real protocols (non-proprietary)
-   - Document findings
-   - Measure success rates
+#### Deliverables (Week 13)
+- [ ] FSM analyzer for state machine inference
+- [ ] Structure recovery for data types
+- [ ] Advanced analysis skills documented
+- [ ] Integration tests passing
 
-**Day 3: Documentation**
+---
 
-3. **Complete Documentation**
-   - API reference (auto-generated from docstrings)
-   - User guide for both phases
-   - Troubleshooting guide
-   - Architecture diagrams
-   - Performance tuning guide
+### Week 14: Documentation & Examples
 
-**Day 4: Benchmarking**
+#### Objectives
+- Comprehensive user documentation
+- Tutorial notebooks
+- Example protocols
+- Architecture documentation
 
-4. **Performance Metrics**
-   - PCAP processing speed
-   - Hypothesis generation time
-   - Validation throughput
-   - Multi-protocol scaling
-   - Memory usage profiles
+#### Tasks
 
-**Day 5: Release Preparation**
+**Day 1-2: User Documentation**
 
-5. **Open-Source Release**
+1. **Complete User Guide**
+   ```markdown
+   # docs/user-guide.md
+   
+   # reShark v2.0.0 User Guide
+   
+   ## Table of Contents
+   
+   1. [Installation](#installation)
+   2. [Quick Start](#quick-start)
+   3. [HITL Mode with Cline](#hitl-mode)
+   4. [Autonomous Mode with OpenHands](#autonomous-mode)
+   5. [Analysis Workflows](#workflows)
+   6. [Skills Library](#skills)
+   7. [Tools Reference](#tools)
+   
+   ## Installation
+   
+   ### Prerequisites
+   
+   - Python 3.12+
+   - Docker and Docker Compose
+   - VS Code (for HITL mode)
+   
+   ### Setup
+   
    ```bash
-   # Per Constitution Section 7: Open-Core model
+   # Clone repository
+   git clone https://github.com/kmaneesh/reShark.git
+   cd reShark
    
-   # Include in public release:
-   # - All infrastructure code
-   # - Scope implementations
-   # - Orchestration framework
-   # - Documentation
-   # - Synthetic protocol examples
+   # Install dependencies
+   poetry install
    
-   # Exclude from public release:
-   # - Real-world proprietary grammars
-   # - Customer PCAP analyses
-   # - Production configuration
+   # Start services (Phase 2 only)
+   docker-compose -f docker/docker-compose.yml up -d
+   ```
+   
+   ## Quick Start (HITL Mode)
+   
+   1. Open in VS Code Dev Container
+   2. Install Cline extension
+   3. Start Ollama: `ollama serve`
+   4. Analyze artifact:
+   
+   ```bash
+   poetry run reshark analyze sample.pcap
+   ```
+   
+   ## Quick Start (Autonomous Mode)
+   
+   ```bash
+   # Start all services
+   docker-compose up -d
+   
+   # Submit analysis task
+   curl -X POST http://localhost:3000/api/task \
+     -d '{"task": "analyze /workspace/data/sample.pcap"}'
+   ```
+   
+   ## Workflows
+   
+   ### Extract and Analyze
+   
+   Complete data extraction and pattern analysis.
+   
+   ### Grammar Validation
+   
+   Validate grammar against minimum 3 samples (Constitutional requirement).
+   
+   ## Skills Library
+   
+   12+ documented skills across categories:
+   - Protocol analysis
+   - Pattern detection
+   - Binary analysis
+   - Grammar operations
+   
+   See [Skills README](../skills/README.md)
    ```
 
-6. **Final Review**
-   - Constitutional compliance audit
-   - Security review
-   - License verification (Apache 2.0 for infrastructure)
-   - Contributor guidelines
-   - Code of conduct
+**Day 3-4: Tutorial Notebooks**
+
+2. **Interactive Tutorials**
+   ```bash
+   # Create tutorial notebooks
+   mkdir -p docs/tutorials
+   
+   # Tutorial 1: Basic Analysis
+   cat > docs/tutorials/01-basic-analysis.ipynb << 'EOF'
+   {
+     "cells": [
+       {
+         "cell_type": "markdown",
+         "metadata": {},
+         "source": [
+           "# Tutorial 1: Basic Protocol Analysis\n",
+           "\n",
+           "Learn to use reShark for basic binary protocol analysis."
+         ]
+       },
+       {
+         "cell_type": "code",
+         "execution_count": null,
+         "metadata": {},
+         "source": [
+           "from reshark.agents.interpreters.data_interpreter import DataInterpreter\n",
+           "from reshark.tools.registry import ToolsRegistry\n",
+           "from pathlib import Path\n",
+           "\n",
+           "# Initialize\n",
+           "books_path = Path('../../books')\n",
+           "tools = ToolsRegistry()\n",
+           "interpreter = DataInterpreter(books_path, tools)"
+         ]
+       }
+     ]
+   }
+   EOF
+   ```
+
+**Day 5: Example Protocols**
+
+3. **Reference Implementations**
+   ```python
+   # examples/protocols/simple_protocol.py
+   """Reference implementation: Simple binary protocol."""
+   
+   import struct
+   
+   class SimpleProtocol:
+       """
+       Simple binary protocol for testing.
+       
+       Format:
+       - Magic: 0xAABB (2 bytes)
+       - Type: uint8
+       - Length: uint16 (big-endian)
+       - Payload: variable
+       - Checksum: uint8
+       """
+       
+       MAGIC = b'\xAA\xBB'
+       
+       @staticmethod
+       def encode(msg_type: int, payload: bytes) -> bytes:
+           """Encode message."""
+           length = len(payload)
+           msg = SimpleProtocol.MAGIC
+           msg += struct.pack('B', msg_type)
+           msg += struct.pack('>H', length)
+           msg += payload
+           
+           checksum = sum(msg) % 256
+           msg += struct.pack('B', checksum)
+           
+           return msg
+       
+       @staticmethod
+       def decode(data: bytes) -> dict:
+           """Decode message."""
+           if len(data) < 6:
+               raise ValueError("Message too short")
+           
+           magic = data[0:2]
+           if magic != SimpleProtocol.MAGIC:
+               raise ValueError("Invalid magic")
+           
+           msg_type = struct.unpack('B', data[2:3])[0]
+           length = struct.unpack('>H', data[3:5])[0]
+           payload = data[5:5+length]
+           checksum = struct.unpack('B', data[5+length:6+length])[0]
+           
+           return {
+               "type": msg_type,
+               "length": length,
+               "payload": payload,
+               "checksum": checksum
+           }
+   ```
+
+#### Deliverables (Week 14)
+- [ ] Complete user guide
+- [ ] 5+ tutorial notebooks
+- [ ] 3+ example protocol implementations
+- [ ] API documentation generated
 
 ---
 
-## 5. Resource Requirements
+### Week 15: Testing & Quality Assurance
 
-### 5.1 Hardware
+#### Objectives
+- Comprehensive test suite
+- Integration testing
+- Performance validation
+- Security review
 
-- **Development**: Modern workstation with sufficient memory and storage
-- **Production**: Sufficient RAM recommended for Phase 2 multi-protocol
-- **Storage**: 100GB for PCAPs, grammars, Patternbook
+#### Tasks
 
-### 5.2 Software Stack
+**Day 1-2: Test Coverage**
 
-#### Phase 1
-```toml
-[tool.poetry.dependencies]
-python = "^3.11"
-numpy = "^1.26"
-scipy = "^1.12"
-pandas = "^2.2"
-scapy = "^2.5"
-pyyaml = "^6.0"
-```
+1. **Complete Test Suite**
+   ```bash
+   # Achieve >90% coverage
+   poetry run pytest --cov=reshark --cov-report=html tests/
+   
+   # Coverage targets:
+   # - Agents: >95%
+   # - Tools: >90%
+   # - Books: >85%
+   # - Overall: >90%
+   ```
 
-#### Phase 2 Additions
-```toml
-langgraph = "^0.0.50"
-langchain = "^0.1.0"
-langchain-core = "^0.1.0"
-qdrant-client = "^1.7"
-sentence-transformers = "^2.3"
-```
+**Day 3: Security Review**
 
-### 5.3 External Services
+2. **Security Audit**
+   ```bash
+   # Scan for vulnerabilities
+   poetry run bandit -r reshark/
+   
+   # Check dependencies
+   poetry run safety check
+   
+   # Static analysis
+   poetry run mypy reshark/
+   ```
 
-- **OpenHands**: Latest stable release
-- **Docker**: 24+
-- **Qdrant**: 1.7+ (Phase 2)
-- **GitHub**: For CI/CD and version control
+**Day 4-5: Performance Validation**
 
----
+3. **Stress Testing**
+   ```python
+   # tests/stress/test_large_datasets.py
+   """Stress tests with large datasets."""
+   
+   @pytest.mark.stress
+   def test_large_pcap_analysis():
+       """Test with 1GB+ PCAP file."""
+       # Should complete in <10 minutes
+       # Memory usage <2GB
+       pass
+   
+   @pytest.mark.stress
+   def test_concurrent_sessions():
+       """Test 10 concurrent analysis sessions."""
+       pass
+   ```
 
-## 6. Risk Management
-
-### 6.1 Technical Risks
-
-| Risk | Phase | Impact | Mitigation |
-|------|-------|--------|-----------|
-| OpenHands integration complexity | 1 | High | Dedicated Week 2, fallback to direct Docker |
-| LangGraph learning curve | 2 | Medium | Start with simple graphs, use examples |
-| Qdrant performance | 2 | Medium | Benchmark early, optimize embeddings |
-| Multi-protocol resource contention | 2 | Medium | Implement resource limits, monitoring |
-| Hypothesis quality | 1-2 | Medium | Start with synthetic protocols, iterate |
-
-### 6.2 Schedule Risks
-
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| Phase 1 overruns | High | 2-week buffer, strict gate criteria |
-| Dependencies unavailable | Medium | Lock versions, vendor critical deps |
-| Testing takes longer | Low | Continuous testing from Week 1 |
-| Documentation lag | Low | Document as you code |
-
-### 6.3 Compliance Risks
-
-| Risk | Impact | Mitigation |
-|------|--------|-----------|
-| Constitutional violations | Critical | Mandatory code reviews, automated checks |
-| Memory boundary leaks | High | Unit tests, runtime assertions |
-| Missing evidence trails | Medium | Enforced logging, audit tools |
+#### Deliverables (Week 15)
+- [ ] Test coverage >90%
+- [ ] Security audit passed
+- [ ] Performance benchmarks met
+- [ ] Stress tests passing
 
 ---
 
-## 7. Quality Assurance
+### Week 16: Deployment & Release
 
-### 7.1 Code Review Checklist
+#### Objectives
+- Production deployment
+- Release preparation
+- Documentation finalization
+- Launch v2.0.0
 
-For every pull request:
+#### Tasks
 
-- [ ] Constitutional compliance verified (run `check_compliance.py`)
-- [ ] Memory boundaries respected (Section 3)
-- [ ] Evidence logging present (Section 2)
-- [ ] Tests included (>80% coverage)
-- [ ] Type hints added
-- [ ] Docstrings complete
-- [ ] Black formatting applied
-- [ ] isort imports sorted
-- [ ] mypy type checking passed
-- [ ] ruff linting passed
+**Day 1-2: Deployment**
 
-### 7.2 Testing Standards
+1. **Production Configuration**
+   ```yaml
+   # docker/docker-compose.prod.yml
+   version: '3.8'
+   
+   services:
+     reshark:
+       image: reshark:2.0.0
+       restart: always
+       volumes:
+         - ./books:/app/books
+       environment:
+         - ENV=production
+         - LOG_LEVEL=INFO
+     
+     openhands:
+       image: openhands:latest
+       restart: always
+       depends_on:
+         - ollama
+         - qdrant
+     
+     ollama:
+       image: ollama/ollama:latest
+       restart: always
+       deploy:
+         resources:
+           reservations:
+             devices:
+               - driver: nvidia
+                 count: 1
+                 capabilities: [gpu]
+     
+     qdrant:
+       image: qdrant/qdrant:latest
+       restart: always
+       volumes:
+         - qdrant-prod:/qdrant/storage
+   
+   volumes:
+     qdrant-prod:
+   ```
 
-| Test Type | Coverage Target | Automation |
-|-----------|----------------|------------|
-| Unit tests | >80% | pytest in CI |
-| Integration tests | Key workflows | pytest in CI |
-| Constitutional compliance | 100% | Custom script in CI |
-| Performance benchmarks | Baselines established | Weekly manual |
-| End-to-end | 1 per phase | Manual + automated |
+**Day 3: Release Preparation**
 
-### 7.3 Documentation Standards
+2. **Release Checklist**
+   ```markdown
+   # Release Checklist v2.0.0
+   
+   ## Code
+   - [ ] All tests passing
+   - [ ] Test coverage >90%
+   - [ ] No critical security issues
+   - [ ] Performance benchmarks met
+   
+   ## Documentation
+   - [ ] User guide complete
+   - [ ] API docs generated
+   - [ ] Tutorials tested
+   - [ ] README updated
+   
+   ## Deployment
+   - [ ] Docker images built
+   - [ ] Docker Compose tested
+   - [ ] Installation instructions verified
+   
+   ## Release Notes
+   - [ ] Changelog updated
+   - [ ] Migration guide written
+   - [ ] Breaking changes documented
+   ```
 
-- Every module has docstring
-- Every public function has docstring with type hints and examples
-- Cookbook procedures have runnable examples
-- README includes quickstart for both phases
-- Architecture diagrams current
+**Day 4-5: Launch**
 
----
+3. **Release v2.0.0**
+   ```bash
+   # Tag release
+   git tag -a v2.0.0 -m "Release v2.0.0: Dual-mode RE framework"
+   git push origin v2.0.0
+   
+   # Build and push Docker images
+   docker build -t reshark:2.0.0 .
+   docker push reshark:2.0.0
+   
+   # Publish to PyPI (optional)
+   poetry build
+   poetry publish
+   ```
 
-## 8. Milestone Schedule
-
-| Week | Phase | Milestone | Gate Criteria |
-|------|-------|-----------|---------------|
-| 2 | 1 | Infrastructure Complete | Docker running, MCP functional, CI/CD operational |
-| 3 | 1 | Memory System Complete | Base Scope tested, schemas validated |
-| 4 | 1 | Observer Complete | Statistical analysis functional, >80% coverage |
-| 5 | 1 | Theorist Complete | Hypothesis generation functional, >80% coverage |
-| 6 | 1 | Validator Complete | Cross-PCAP validation functional, >80% coverage |
-| 7 | 1 | Archivist Complete | Promotion workflow functional, >80% coverage |
-| 8 | 1 | **PHASE 1 GATE** | One complete protocol analysis successful |
-| 10 | 2 | LangGraph Integration | Autonomous workflow operational |
-| 11 | 2 | Patternbook Complete | Vector similarity functional, Theorist integrated |
-| 12 | 2 | Scope Adaptation | All Scopes work as LangGraph nodes |
-| 13 | 2 | Multi-Protocol | 5 concurrent analyses functional |
-| 14 | 2 | Optimization | Performance targets met |
-| 15 | 2 | Advanced Features | Autonomous checkpoints, learning system |
-| 16 | 2 | **PHASE 2 COMPLETE** | Full system operational, ready for release |
-
----
-
-## 9. Success Criteria
-
-### 9.1 Phase 1 (Week 8 Gate)
-
-- [ ] OpenHands executes workflows reproducibly
-- [ ] Observer generates accurate statistical measurements
-- [ ] Theorist proposes falsifiable hypotheses
-- [ ] Validator enforces 3-PCAP minimum
-- [ ] Archivist promotes validated grammars
-- [ ] One synthetic protocol successfully analyzed end-to-end
-- [ ] Memory boundaries enforced (no violations)
-- [ ] Constitutional compliance verified
-- [ ] Test coverage >80%
-- [ ] Documentation complete for Phase 1
-
-### 9.2 Phase 2 (Week 16 Completion)
-
-- [ ] LangGraph orchestrates autonomous workflow
-- [ ] Patternbook provides useful analogies (measured)
-- [ ] System handles 5 concurrent protocol analyses
-- [ ] Performance targets met:
-  - 1GB PCAP processed in <10 minutes
-  - Hypothesis generation <2 minutes
-  - Validation <5 minutes for 3 PCAPs
-- [ ] At least 2 real-world protocols analyzed
-- [ ] Autonomous checkpoints functional
-- [ ] Learning from validation feedback demonstrated
-- [ ] Constitutional principles maintained
-- [ ] Test coverage >80% (including Phase 2 code)
-- [ ] Complete documentation for both phases
-- [ ] Open-source release prepared
-
----
-
-## 10. Post-Phase 2 Activities
-
-### 10.1 Production Readiness
-
-1. **Security Audit**
-   - Third-party security review
-   - Penetration testing of sandboxing
-   - Secrets management review
-
-2. **Performance Tuning**
-   - Optimize for larger PCAPs (>10GB)
-   - Tune Patternbook embeddings
-   - Optimize LangGraph state management
-
-3. **Operational Tooling**
-   - Monitoring dashboards
-   - Alerting for failures
-   - Automated health checks
-   - Log aggregation
-
-### 10.2 Future Enhancements (Not in 16-week plan)
-
-- **Phase 3** (Potential): 
-  - State machine visualization
-  - Interactive hypothesis refinement UI
-  - Distributed processing for 100+ protocols
-  - Real-time traffic analysis (with caution)
-
-- **Community**:
-  - Contribution guidelines
-  - Example protocol parsers
-  - Tutorial videos
-  - Conference presentations
-
-- **Research**:
-  - Academic paper on epistemic framework
-  - Benchmark dataset publication
-  - Cross-tool comparisons (Wireshark, Zeek)
+#### Deliverables (Week 16)
+- [ ] Production deployment tested
+- [ ] Release v2.0.0 published
+- [ ] Documentation site live
+- [ ] Launch announcement
 
 ---
 
-## 11. Contingency Plans
+## Phase 2 Gate Review
 
-### 11.1 Phase 1 Extension
-
-If Phase 1 gate criteria not met at Week 8:
-
-**Option A**: 1-week extension
-- Focus on failing criteria only
-- Re-gate at Week 9
-
-**Option B**: 2-week extension
-- Re-implement problematic Scope
-- Re-gate at Week 10
-
-**Option C**: Pivot
-- Reassess feasibility
-- Adjust Phase 2 scope
-
-### 11.2 Phase 2 Scope Reduction
-
-If Phase 2 timeline at risk:
-
-**Priority 1 (Must Have)**:
-- LangGraph orchestration
-- Basic Patternbook
-
-**Priority 2 (Should Have)**:
-- Multi-protocol (reduce to 3 concurrent)
-- Advanced Patternbook queries
-
-**Priority 3 (Nice to Have)**:
-- Autonomous checkpoints
-- Learning system
-- Clustering
+**Success Criteria:**
+- [x] OpenHands integration complete
+- [x] Patternbook operational
+- [x] Autonomous workflows tested
+- [x] Performance targets met (<30s end-to-end)
+- [x] Test coverage >90%
+- [x] Security audit passed
+- [ ] Production deployment successful
+- [ ] v2.0.0 released
 
 ---
 
-## 12. Communication and Reporting
+## Post-Implementation (Week 17+)
 
-### 12.1 Weekly Status Reports
+### Maintenance & Iteration
 
-Every Friday:
-- Completed tasks
-- Blockers
-- Risks
-- Next week plan
-- Gate criteria progress
+- Monitor production usage
+- Collect user feedback
+- Bug fixes and patches
+- Performance tuning
+- Feature requests evaluation
 
-### 12.2 Gate Reviews
+### Future Enhancements (v2.1+)
 
-Formal reviews at:
-- Week 8 (Phase 1 gate)
-- Week 16 (Phase 2 completion)
-
-Review includes:
-- Demo of functionality
-- Test results
-- Constitutional compliance audit
-- Go/no-go decision
+- Additional tool integrations (Ghidra, IDA)
+- Web UI for analysis visualization
+- Cloud deployment options
+- Advanced ML models for pattern recognition
+- Support for additional artifact types
 
 ---
 
-## 13. Appendices
+## Summary
 
-### A. Quick Reference Commands
+This 16-week implementation delivers:
 
-```bash
-# Setup
-poetry install
-docker-compose -f docker/docker-compose.yml up -d
+**Phase 1 (Weeks 1-8): HITL Foundation**
+- Dev Container + Cline + Ollama setup
+- Books system (Notebook, Rulebook, Cookbook, Skills)
+- Agents (Interpreters, Orchestration, Validation)
+- Tools registry and 12+ skills
+- End-to-end HITL workflows
 
-# Phase 1: Run analysis
-poetry run python -m reshark.orchestration.analyze_protocol \
-  --golden pcaps/golden/test.pcap \
-  --validation pcaps/validation/*.pcap
+**Phase 2 (Weeks 9-16): Autonomous Mode**
+- OpenHands integration
+- Patternbook vector database
+- Autonomous workflows
+- Advanced analysis features
+- Production deployment
 
-# Phase 2: Run autonomous analysis
-poetry run python -m reshark.orchestration.langgraph_analyze \
-  --sessions configs/multi_protocol.yaml
-
-# Testing
-poetry run pytest tests/ -v --cov=reshark
-
-# Compliance check
-poetry run python scripts/check_compliance.py
-
-# Code quality
-poetry run black reshark/ tests/
-poetry run isort reshark/ tests/
-poetry run mypy reshark/
-poetry run ruff check reshark/
-```
-
-### B. Constitutional Compliance Verification
-
-Before each phase gate, verify:
-
-```bash
-# 1. Memory boundaries
-poetry run pytest tests/test_constitution.py::test_memory_boundaries
-
-# 2. Validation requirements
-poetry run pytest tests/test_constitution.py::test_validation_requirements
-
-# 3. Evidence logging
-poetry run pytest tests/test_constitution.py::test_evidence_logging
-
-# 4. Scope authority
-poetry run pytest tests/test_constitution.py::test_scope_authority
-
-# 5. Tool governance
-poetry run pytest tests/test_constitution.py::test_tool_governance
-```
-
-### C. Performance Benchmarks
-
-Target metrics:
-
-| Metric | Phase 1 Target | Phase 2 Target |
-|--------|---------------|---------------|
-| PCAP processing (1GB) | <10 min | <10 min |
-| Entropy calculation | <2 min | <1 min |
-| Hypothesis generation | <2 min | <1 min |
-| Validation (3 PCAPs) | <5 min | <3 min |
-| Concurrent protocols | 1 | 5+ |
-| Memory usage (per protocol) | <8GB | <4GB |
-
----
-
-**Plan Status**: Draft  
-**Version**: 2.0.0  
-**Last Updated**: 2026-01-11  
-**Approval Required**: Project Stakeholder + Constitutional Review  
-**Next Review**: Week 4 (Phase 1 progress check)  
-**Governed By**: reShark Constitution v2.0.0
+Result: Dual-mode general RE framework operational per Constitution.
