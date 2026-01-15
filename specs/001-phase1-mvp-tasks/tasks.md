@@ -1,12 +1,15 @@
 # Tasks: Phase 1 MVP - Foundation Implementation
 
+**Architecture**: v2.0.0 (Agent-based with Books system)  
 **Input**: Design documents from `/specs/001-phase1-mvp-tasks/`  
 **Prerequisites**: [plan.md](plan.md), [spec.md](spec.md)  
-**Feature Branch**: `001-phase1-mvp-tasks`
+**Feature Branch**: `001-phase1-mvp-implementation`
 
-**Tests**: Not included per spec - focus is on core implementation with manual validation. Integration tests added for constitutional compliance verification only.
+**Phase 1 Focus**: HITL (Human-in-the-Loop) workflows with Cline + Ollama Local LLM in VS Code Dev Container. Autonomous mode (Phase 2) deferred.
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+**Tests**: Integration tests for constitutional compliance and complete HITL workflows. Unit tests for agent implementations (>80% coverage target).
+
+**Organization**: Tasks are grouped by architectural component (Books, Agents, Tools, Skills) and user story to enable independent implementation.
 
 ## Format: `- [ ] [ID] [P?] [Story?] Description`
 
@@ -23,13 +26,14 @@
 **Purpose**: Project initialization and basic structure required for all features
 
 - [ ] T001 Create Python package structure with reshark/ directory and pyproject.toml configuration
-- [ ] T002 Initialize Poetry project with Python 3.11+ and add core dependencies (numpy, scipy, pandas, scapy, pyyaml)
-- [ ] T003 [P] Create workspace directory structure: workspace/{notebook,rulebook/grammars,rulebook/tests,cookbook,pcaps}
-- [ ] T004 [P] Configure .gitignore to exclude workspace/ directory and __pycache__
-- [ ] T005 [P] Setup pytest configuration in pyproject.toml with coverage reporting
-- [ ] T006 [P] Create tests/ directory structure: tests/{unit/test_scopes,unit/test_memory,unit/test_tools,integration,fixtures}
-- [ ] T007 [P] Create Docker execution environment with Dockerfile and docker-compose.yml in docker/ (addresses FR-024: sandboxed tool execution)
-- [ ] T008 [P] Copy constitution to docs/constitution-v2.md for reference
+- [ ] T002 Initialize Poetry project with Python 3.12+ and add core dependencies (pydantic, pytest, ollama-python, tshark wrappers)
+- [ ] T003 [P] Create Books workspace directory structure: books/{notebook/sessions,rulebook/grammars,rulebook/schemas,cookbook/methods,skills/}
+- [ ] T004 [P] Configure .gitignore to exclude books/notebook/, books/rulebook/, artifacts/, *.pcap, *.pcapng, and __pycache__
+- [ ] T005 [P] Setup pytest configuration in pyproject.toml with coverage reporting and async support
+- [ ] T006 [P] Create tests/ directory structure: tests/{agents/,books/,tools/,integration/,autonomous/,performance/,fixtures/}
+- [ ] T007 [P] Create Dev Container configuration in .devcontainer/ with docker-compose.yml (VS Code + tshark + Ollama + Cline)
+- [ ] T008 [P] Create runtime.yaml configuration file for agent settings and Ollama endpoints
+- [ ] T009 [P] Create initial Skills library structure: books/skills/{protocol/,pattern/,binary/,grammar/,README.md}
 
 **Checkpoint**: Project structure ready - foundational phase can begin
 
@@ -41,36 +45,42 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-### Memory System Core
+### Books System Core
 
-- [ ] T009 Create memory system base module at reshark/memory/__init__.py with MemoryBoundaryViolation exception
-- [ ] T010 [P] Implement Notebook class in reshark/memory/notebook.py with JSON file storage and session isolation
-- [ ] T011 [P] Implement Rulebook class in reshark/memory/rulebook.py with grammar versioning and test suite storage
-- [ ] T012 [P] Implement Cookbook class in reshark/memory/cookbook.py with Markdown procedure storage (read-only)
+- [ ] T010 Create Books system base module at reshark/books/__init__.py with BooksAccess class providing unified interface
+- [ ] T011 [P] Implement Notebook class in reshark/books/notebook/ with JSON file storage and session-based directory isolation (UUID)
+- [ ] T012 [P] Implement Rulebook class in reshark/books/rulebook/ with grammar versioning (.ksy or .py) and cross-sample validation metadata
+- [ ] T013 [P] Implement Cookbook class in reshark/books/cookbook/ with Markdown workflow documentation (read-only)
+- [ ] T014 [P] Implement Skills class in reshark/books/skills/ with markdown methodology file loading for LLM context
 
 ### Schemas and Validation
 
-- [ ] T013 Create schemas module at reshark/schemas/__init__.py
-- [ ] T014 [P] Define Notebook JSON schema in reshark/schemas/notebook_schema.py with timestamp, scope, and data fields
-- [ ] T015 [P] Define Hypothesis schema in reshark/schemas/hypothesis_schema.py with claim, test method, parameters, confidence
-- [ ] T016 [P] Define Grammar schema in reshark/schemas/grammar_schema.py with structure, parsing rules, version
+- [ ] T015 Create schemas module at reshark/schemas/__init__.py
+- [ ] T016 [P] Define Notebook JSON schema with timestamp, agent, operation, and data fields (matches books-schemas.json from plan.md)
+- [ ] T017 [P] Define Pattern schema with pattern_id, claim, confidence, and evidence array (minimum 1 sample)
+- [ ] T018 [P] Define Grammar schema with name, version, format (kaitai/python), content, and validation_samples array (minimum 3)
 
-### Base Scope Framework
+### Base Agent Framework
 
-- [ ] T017 Create scopes module at reshark/scopes/__init__.py
-- [ ] T018 Implement abstract Base Scope class in reshark/scopes/base.py with authority_scope property, execute method, and memory access methods
-- [ ] T019 Add memory boundary enforcement to Base Scope class preventing non-Archivist writes to Rulebook
+- [ ] T019 Create agents module at reshark/agents/__init__.py
+- [ ] T020 Implement abstract BaseAgent class in reshark/agents/base.py with BooksAccess, execute() method, get_required_skills(), invoke_tool()
+- [ ] T021 Add Books access methods to BaseAgent: read_notebook(), write_notebook(), read_rulebook(), write_rulebook() (GrammarValidator only)
+- [ ] T022 Add skill loading method to BaseAgent: read_skill() returning markdown content for LLM context
 
 ### Utilities and Logging
 
-- [ ] T020 Create utils module at reshark/utils/__init__.py
-- [ ] T021 [P] Implement evidence trail logging in reshark/utils/logging.py with timestamp and scope attribution
-- [ ] T022 [P] Implement input validation utilities in reshark/utils/validation.py for PCAP file checks
+- [ ] T023 Create utils module at reshark/utils/__init__.py
+- [ ] T024 [P] Implement evidence trail logging in reshark/utils/logging.py with timestamp and agent attribution
+- [ ] T025 [P] Implement input validation utilities in reshark/utils/validation.py for artifact file checks (PCAP, binary)
+- [ ] T026 [P] Implement session management utilities in reshark/utils/session.py for UUID generation and cleanup
 
 ### Tool Integration Layer
 
-- [ ] T023 Create tools module at reshark/tools/__init__.py
-- [ ] T024 Implement PCAP reader abstraction in reshark/tools/pcap_reader.py using scapy with error handling for corrupted files
+- [ ] T027 Create tools module at reshark/tools/__init__.py
+- [ ] T028 Implement ToolsRegistry class in reshark/tools/registry.py with unified tool invocation interface
+- [ ] T029 [P] Implement tshark_wrapper.py with command execution, output parsing, and error handling
+- [ ] T030 [P] Implement binary_tools.py with wrappers for hexdump, strings, and file commands
+- [ ] T031 [P] Implement entropy.py with Shannon entropy calculation utilities
 
 **Checkpoint**: Foundation ready - research and design phase can begin
 
@@ -84,179 +94,197 @@
 
 ### Research Phase (Phase 0)
 
-- [ ] T123 [P] Research PCAP parsing libraries (scapy vs dpkt vs pyshark) and document decision in specs/001-phase1-mvp-tasks/research.md
-- [ ] T124 [P] Research statistical analysis methods (Shannon entropy, byte frequency, correlation) and document algorithms in research.md
-- [ ] T125 [P] Research test suite generation approaches (string templates vs AST manipulation) and document strategy in research.md
-- [ ] T126 [P] Research session isolation mechanisms (UUID vs timestamp directories) and document design in research.md
-- [ ] T127 [P] Research grammar format options (Python classes vs YAML vs DSL) and document specification in research.md
-- [ ] T128 Document known unknowns resolution in research.md (chunk sizes, entropy thresholds, confidence scoring, synthetic protocol generation)
+- [ ] T032 [P] Research tool wrapper strategies (subprocess vs python libraries) and document ToolsRegistry design in specs/001-phase1-mvp-tasks/research.md
+- [ ] T033 [P] Research Skills library organization (taxonomy, file naming, versioning) and document design patterns in research.md
+- [ ] T034 [P] Research agent coordination patterns (function calls vs message passing) and document communication architecture in research.md
+- [ ] T035 [P] Research session isolation mechanisms (UUID vs timestamp directories) and document design in research.md
+- [ ] T036 [P] Research grammar validation frameworks (Kaitai Struct vs Python parsers) and document cross-sample validation strategy in research.md
+- [ ] T037 [P] Research Ollama integration with Cline (HTTP API vs native) and document HITL workflow patterns in research.md
+- [ ] T038 [P] Research OpenHands integration for Phase 2 autonomous mode and document adapter architecture in research.md
+- [ ] T039 Document known unknowns resolution in research.md (tshark filter expressions, entropy thresholds, skills taxonomy, Patternbook embeddings)
 
 ### Design Phase (Phase 1)
 
-- [ ] T129 [P] Create data-model.md in specs/001-phase1-mvp-tasks/ documenting core entities (Scope, Session, Observation, Hypothesis, ValidationResult, Grammar)
-- [ ] T130 [P] Document entity relationships and state transitions in data-model.md (Session→Observation→Hypothesis→ValidationResult→Grammar flows)
-- [ ] T131 [P] Create contracts/ directory in specs/001-phase1-mvp-tasks/ with scope-interface.md defining Base Scope class contract
-- [ ] T132 [P] Create notebook-schema.json and validation-contract.md in contracts/ directory defining memory schemas and validation requirements
-- [ ] T133 Create quickstart.md in specs/001-phase1-mvp-tasks/ with setup instructions, first analysis walkthrough, and result verification steps
+- [ ] T040 [P] Create data-model.md in specs/001-phase1-mvp-tasks/ documenting core entities (Agent, Session, Observation, Pattern, ValidationResult, Grammar, Skill, ToolResult)
+- [ ] T041 [P] Document entity relationships in data-model.md (Agent → Books, Session → Observation → Pattern → Grammar flows, Agent → Skills → LLM)
+- [ ] T042 [P] Document state transitions in data-model.md (Session → Observation → Pattern → Grammar promotion lifecycle)
+- [ ] T043 [P] Create contracts/ directory in specs/001-phase1-mvp-tasks/ with agent-interface.md defining BaseAgent class contract
+- [ ] T044 [P] Create books-schemas.json in contracts/ defining Notebook, Pattern, and Grammar JSON schemas (matches plan.md)
+- [ ] T045 [P] Create validation-contract.md in contracts/ defining GrammarValidator requirements (hardcoded 3-sample minimum, cross-sample metrics)
+- [ ] T046 Create quickstart.md in specs/001-phase1-mvp-tasks/ with Dev Container setup, Cline configuration, and first HITL analysis walkthrough
 
 **Checkpoint**: Research and design artifacts complete - user story implementation can now begin in parallel
 
 ---
 
-## Phase 3: User Story 1 - Basic Protocol Analysis Workflow (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Skills-Guided Protocol Analysis Workflow (Priority: P1) 🎯 MVP
 
-**Goal**: Enable end-to-end protocol analysis from PCAP to validated grammar, demonstrating core value proposition
+**Goal**: Enable end-to-end HITL protocol analysis using Cline + Ollama with skills-guided agent workflows
 
-**Independent Test**: Provide synthetic binary protocol PCAP, run full workflow (Observer → Theorist → Validator → Archivist), verify grammar in Rulebook
+**Independent Test**: Provide artifact (PCAP/binary), run HITL workflow with Cline (DataInterpreter → PatternInterpreter → GrammarValidator), verify grammar in Rulebook
 
-### Observer Scope Implementation (US1)
+### Skills Library Foundation (US1)
 
-- [ ] T025 [P] [US1] Implement Observer scope class in reshark/scopes/observer.py with authority_scope='statistical_analysis'
-- [ ] T026 [US1] Add entropy calculation method to Observer scope using Shannon entropy from byte frequencies
-- [ ] T027 [US1] Add byte frequency analysis method to Observer scope generating distribution maps
-- [ ] T028 [US1] Add invariant detection method to Observer scope identifying constant byte positions
-- [ ] T029 [US1] Implement Observer.execute() method orchestrating analysis and writing to Notebook
-- [ ] T030 [P] [US1] Create statistical analysis utilities in reshark/tools/statistics.py for entropy and frequency calculations
+- [ ] T047 [P] [US1] Create protocol analysis skills: books/skills/protocol/data-extraction.md with tshark and hexdump methodology
+- [ ] T048 [P] [US1] Create pattern detection skills: books/skills/pattern/entropy-analysis.md and sequence-detection.md
+- [ ] T049 [P] [US1] Create binary analysis skills: books/skills/binary/boundary-detection.md and type-inference.md
+- [ ] T050 [P] [US1] Create grammar validation skills: books/skills/grammar/grammar-validation.md with cross-sample testing methodology
+- [ ] T051 [P] [US1] Update books/skills/README.md with taxonomy, usage examples, and LLM integration guidelines
 
-### Theorist Scope Implementation (US1)
+### DataInterpreter Agent Implementation (US1)
 
-- [ ] T031 [P] [US1] Implement Theorist scope class in reshark/scopes/theorist.py with authority_scope='hypothesis_generation'
-- [ ] T032 [US1] Add hypothesis generation method reading Observer results from Notebook
-- [ ] T033 [US1] Add boundary detection logic identifying message delimiters from entropy patterns
-- [ ] T034 [US1] Add field structure inference logic proposing fixed vs variable fields
-- [ ] T035 [US1] Add confidence scoring method for generated hypotheses
-- [ ] T036 [US1] Implement Theorist.execute() method generating testable hypotheses and writing to Notebook
+- [ ] T052 [P] [US1] Implement DataInterpreter agent class in reshark/agents/interpreters/data_interpreter.py
+- [ ] T053 [US1] Add artifact extraction method using ToolsRegistry (tshark for PCAPs, hexdump for binaries)
+- [ ] T054 [US1] Add stream parsing method extracting protocol conversations and sessions
+- [ ] T055 [US1] Add observation recording method writing structured data to Notebook
+- [ ] T056 [US1] Implement DataInterpreter.execute() reading protocol/data-extraction.md skill and orchestrating tool invocations
+- [ ] T057 [US1] Add DataInterpreter.get_required_skills() returning ['protocol/data-extraction.md']
 
-### Validator Scope Implementation (US1)
+### PatternInterpreter Agent Implementation (US1)
 
-- [ ] T037 [P] [US1] Implement Validator scope class in reshark/scopes/validator.py with authority_scope='cross_validation'
-- [ ] T038 [US1] Add minimum 3 PCAP enforcement check in Validator.execute() raising error if insufficient PCAPs
-- [ ] T039 [US1] Add test suite generation method creating pytest code from hypotheses
-- [ ] T040 [P] [US1] Create test generator utilities in reshark/tools/test_generator.py for pytest code generation
-- [ ] T041 [US1] Add cross-PCAP validation method executing tests against all provided PCAPs
-- [ ] T042 [US1] Add negative testing method with corrupted PCAP detection
-- [ ] T043 [US1] Implement results recording method writing pass/fail outcomes to Notebook with evidence trails
+- [ ] T058 [P] [US1] Implement PatternInterpreter agent class in reshark/agents/interpreters/pattern_interpreter.py
+- [ ] T059 [US1] Add entropy analysis method using ToolsRegistry entropy calculator and reading pattern/entropy-analysis.md skill
+- [ ] T060 [US1] Add sequence detection method identifying repeating patterns and reading pattern/sequence-detection.md skill
+- [ ] T061 [US1] Add boundary detection method finding message delimiters and reading binary/boundary-detection.md skill
+- [ ] T062 [US1] Add pattern hypothesis generation method creating testable claims with confidence scores
+- [ ] T063 [US1] Implement PatternInterpreter.execute() reading Notebook observations and generating pattern hypotheses
+- [ ] T064 [US1] Add PatternInterpreter.get_required_skills() returning ['pattern/entropy-analysis.md', 'pattern/sequence-detection.md', 'binary/boundary-detection.md']
 
-### Archivist Scope Implementation (US1)
+### GrammarValidator Agent Implementation (US1)
 
-- [ ] T044 [P] [US1] Implement Archivist scope class in reshark/scopes/archivist.py with authority_scope='memory_management'
-- [ ] T045 [US1] Add grammar generation method converting validated hypotheses to protocol specifications
-- [ ] T046 [US1] Add Rulebook promotion method with validation gate checking 3 PCAP requirement
-- [ ] T047 [US1] Add test suite export method writing generated pytest files to workspace/rulebook/tests/
-- [ ] T048 [US1] Add session archival method organizing Notebook entries for completed analyses
-- [ ] T049 [US1] Implement Archivist.execute() method handling promotion operations
+- [ ] T065 [P] [US1] Implement GrammarValidator agent class in reshark/agents/validation/grammar_validator.py
+- [ ] T066 [US1] Add constitutional 3-sample enforcement (hardcoded check) raising ConstitutionalViolation if <3 samples
+- [ ] T067 [US1] Add pytest test generation method creating test code from pattern hypotheses
+- [ ] T068 [US1] Add cross-sample validation method executing tests against all provided samples (PCAP/binary files)
+- [ ] T069 [US1] Add validation results recording method writing pass/fail evidence to Notebook
+- [ ] T070 [US1] Add grammar promotion method writing validated grammar to Rulebook with validation metadata
+- [ ] T071 [US1] Implement GrammarValidator.execute() reading grammar/grammar-validation.md skill and orchestrating validation
+- [ ] T072 [US1] Add GrammarValidator.get_required_skills() returning ['grammar/grammar-validation.md']
 
-### Orchestration for US1
+### SessionManager and TaskOrchestrator (US1)
 
-- [ ] T050 Create orchestration module at reshark/orchestration/__init__.py
-- [ ] T051 [US1] Implement analyze_protocol.py script orchestrating Observer → Theorist → Validator → Archivist workflow
-- [ ] T052 [US1] Add human review checkpoints in orchestration script before Rulebook promotion
-- [ ] T053 [US1] Add error handling and progress reporting to orchestration script
+- [ ] T073 [P] [US1] Implement SessionManager agent in reshark/agents/orchestration/session_manager.py
+- [ ] T074 [US1] Add session creation method generating UUID-based Notebook directories
+- [ ] T075 [US1] Add session lifecycle management (start, pause, resume, archive)
+- [ ] T076 [US1] Add session cleanup method removing old Notebook sessions
+- [ ] T077 [P] [US1] Implement TaskOrchestrator agent in reshark/agents/orchestration/task_orchestrator.py
+- [ ] T078 [US1] Add agent workflow coordination (DataInterpreter → PatternInterpreter → GrammarValidator sequence)
+- [ ] T079 [US1] Add HITL checkpoint integration allowing human review between agent steps
+- [ ] T080 [US1] Add error handling and agent failure recovery
+
+### CLI Integration for HITL Workflow (US1)
+
+- [ ] T081 [US1] Create CLI module at reshark/cli.py with Click framework
+- [ ] T082 [US1] Add 'analyze' command invoking TaskOrchestrator with artifact path and session ID
+- [ ] T083 [US1] Add 'session' commands for listing, viewing, and cleaning sessions
+- [ ] T084 [US1] Add verbose logging option for debugging agent execution
 
 ### Test Data for US1
 
-- [ ] T054 [P] [US1] Create synthetic binary protocol generator script for testing
-- [ ] T055 [P] [US1] Generate synthetic protocol PCAP in tests/fixtures/synthetic_protocol.pcap
-- [ ] T056 [P] [US1] Generate 3 validation PCAPs in tests/fixtures/validation_pcaps/ directory
+- [ ] T085 [P] [US1] Create synthetic protocol generator in tests/fixtures/protocol_generator.py
+- [ ] T086 [P] [US1] Generate 3 synthetic protocol samples in tests/fixtures/samples/
+- [ ] T087 [P] [US1] Create binary test artifacts (various formats) in tests/fixtures/samples/
 
-**Checkpoint**: User Story 1 complete - full workflow from PCAP to grammar is functional and manually testable
+**Checkpoint**: User Story 1 complete - skills-guided HITL workflow functional with Cline + Ollama
 
 ---
 
-## Phase 4: User Story 2 - Memory Boundary Enforcement (Priority: P1)
+## Phase 4: User Story 2 - Constitutional Compliance & Books Boundaries (Priority: P1)
 
-**Goal**: Ensure constitutional memory boundaries are enforced, preventing unauthorized state changes and maintaining system integrity
+**Goal**: Ensure constitutional Books boundaries are enforced, preventing unauthorized state changes and maintaining 3-sample validation requirement
 
-**Independent Test**: Attempt to write to Rulebook from non-Archivist scopes and verify violations are blocked, attempt promotion without validation and verify rejection
+**Independent Test**: Attempt to write to Rulebook from non-GrammarValidator agents and verify violations are blocked, attempt promotion without 3 samples and verify rejection
 
-### Memory Boundary Validation (US2)
+### Books Boundary Validation (US2)
 
-- [ ] T057 [US2] Add write_rulebook() permission check in Base Scope class raising MemoryBoundaryViolation for non-Archivist scopes
-- [ ] T058 [US2] Add validation gate in Archivist.promote() checking hypothesis validation status before allowing promotion
-- [ ] T059 [US2] Add validation requirement check in Archivist.promote() verifying 3 PCAP minimum from Validator results
-- [ ] T060 [US2] Add scope attribution to all Notebook writes ensuring traceability
+- [ ] T088 [US2] Add write_rulebook() permission check in BaseAgent class raising BooksBoundaryViolation for non-GrammarValidator agents
+- [ ] T089 [US2] Add validation gate in GrammarValidator.promote() checking pattern validation status before allowing promotion
+- [ ] T090 [US2] Add 3-sample requirement check in GrammarValidator.promote() verifying constitutional minimum (hardcoded)
+- [ ] T091 [US2] Add agent attribution to all Notebook writes ensuring traceability
+- [ ] T092 [US2] Add ConsistencyChecker agent in reshark/agents/validation/consistency_checker.py verifying evidence chain completeness
 
 ### Integration Tests for Constitutional Compliance (US2)
 
-- [ ] T061 [P] [US2] Create constitutional compliance test suite in tests/integration/test_constitution.py
-- [ ] T062 [US2] Add test verifying Observer cannot write to Rulebook (expects MemoryBoundaryViolation)
-- [ ] T063 [US2] Add test verifying Theorist cannot write to Rulebook (expects MemoryBoundaryViolation)
-- [ ] T064 [US2] Add test verifying Validator cannot write to Rulebook (expects MemoryBoundaryViolation)
-- [ ] T065 [US2] Add test verifying unvalidated hypotheses cannot be promoted (expects ValidationError)
-- [ ] T066 [US2] Add test verifying promotion with <3 PCAPs fails (expects ConstitutionalViolation)
-- [ ] T067 [US2] Add test verifying all Notebook entries have timestamp and scope attribution
-- [ ] T068 [US2] Add test verifying evidence trails are complete for full workflow
+- [ ] T093 [P] [US2] Create constitutional compliance test suite in tests/integration/test_constitutional_compliance.py
+- [ ] T094 [US2] Add test verifying DataInterpreter cannot write to Rulebook (expects BooksBoundaryViolation)
+- [ ] T095 [US2] Add test verifying PatternInterpreter cannot write to Rulebook (expects BooksBoundaryViolation)
+- [ ] T096 [US2] Add test verifying SessionManager cannot write to Rulebook (expects BooksBoundaryViolation)
+- [ ] T097 [US2] Add test verifying unvalidated patterns cannot be promoted (expects ValidationError)
+- [ ] T098 [US2] Add test verifying promotion with <3 samples fails (expects ConstitutionalViolation)
+- [ ] T099 [US2] Add test verifying all Notebook entries have timestamp and agent attribution
+- [ ] T100 [US2] Add test verifying evidence trails are complete for full HITL workflow
+- [ ] T101 [US2] Add test verifying Skills library files are immutable during agent execution
 
-**Checkpoint**: Memory boundary enforcement verified - constitutional compliance guaranteed through automated tests
-
----
-
-## Phase 5: User Story 3 - Manual Workflow Orchestration (Priority: P2)
-
-**Goal**: Provide manual control over each analysis step, enabling human review and informed decision-making
-
-**Independent Test**: Run each scope independently via command-line, verify outputs at each step, test session isolation with multiple protocols
-
-### Command-Line Interfaces (US3)
-
-- [ ] T069 [P] [US3] Add CLI entry point to Observer scope in reshark/scopes/observer.py accepting --pcap and --session arguments
-- [ ] T070 [P] [US3] Add CLI entry point to Theorist scope in reshark/scopes/theorist.py accepting --session argument
-- [ ] T071 [P] [US3] Add CLI entry point to Validator scope in reshark/scopes/validator.py accepting --session and --pcaps arguments
-- [ ] T072 [P] [US3] Add CLI entry point to Archivist scope in reshark/scopes/archivist.py accepting --session, --operation, and --hypothesis-id arguments
-
-### Session Management (US3)
-
-- [ ] T073 [US3] Create session manager module at reshark/utils/session.py
-- [ ] T074 [US3] Add session creation method generating unique session IDs (UUID-based)
-- [ ] T075 [US3] Add session isolation enforcement ensuring separate workspace/notebook/{session_id}/ directories
-- [ ] T076 [US3] Add session listing method showing all active and archived sessions
-- [ ] T077 [US3] Add session cleanup method for removing old session data
-
-### Workflow Scripts (US3)
-
-- [ ] T078 [US3] Enhance analyze_protocol.py to support step-by-step execution with pause between stages
-- [ ] T079 [US3] Add hypothesis review mode to analyze_protocol.py showing Theorist results before validation
-- [ ] T080 [US3] Add validation result review in analyze_protocol.py allowing refinement before promotion
-- [ ] T081 [US3] Create validate_grammar.py script in reshark/orchestration/ for re-running validation on existing grammars
-- [ ] T082 [US3] Create promote_to_rulebook.py script in reshark/orchestration/ for explicit promotion operations
-
-**Checkpoint**: Manual workflow orchestration complete - users have full control over each analysis step with session isolation
+**Checkpoint**: Books boundary enforcement verified - constitutional compliance guaranteed through automated tests
 
 ---
 
-## Phase 6: User Story 4 - Evidence-Based Validation (Priority: P2)
+## Phase 5: User Story 3 - Skills-Guided Analysis Patterns (Priority: P2)
 
-**Goal**: Ensure all hypotheses are validated against multiple PCAPs with complete evidence trails, building trust in generated grammars
+**Goal**: Expand Skills library with methodology documentation guiding LLM behavior for consistent analysis
 
-**Independent Test**: Provide hypotheses and PCAPs, run validation, verify evidence includes PCAP paths, test code, and results for each
+**Independent Test**: Run agents with different skill files, verify methodology is followed, test skills-guided prompts with Ollama
+
+### Skills Library Expansion (US3)
+
+- [ ] T102 [P] [US3] Create advanced protocol skills: books/skills/protocol/session-reconstruction.md and state-machine-detection.md
+- [ ] T103 [P] [US3] Create advanced pattern skills: books/skills/pattern/correlation-analysis.md and anomaly-detection.md
+- [ ] T104 [P] [US3] Create advanced binary skills: books/skills/binary/structure-inference.md and endianness-detection.md
+- [ ] T105 [P] [US3] Create advanced grammar skills: books/skills/grammar/grammar-generation.md and kaitai-struct-writing.md
+- [ ] T106 [US3] Add skill versioning mechanism tracking methodology changes over time
+- [ ] T107 [US3] Add skill validation tests ensuring markdown files are LLM-readable
+
+### Skills Integration with Ollama (US3)
+
+- [ ] T108 [US3] Implement skills context injection in BaseAgent loading markdown content before LLM calls
+- [ ] T109 [US3] Add skills-guided prompt templates in reshark/utils/prompts.py
+- [ ] T110 [US3] Add Ollama client wrapper in reshark/llm/ollama_client.py with error handling and retry logic
+- [ ] T111 [US3] Add skills library tests verifying methodology guidance improves analysis quality
+
+### Cookbook Workflow Documentation (US3)
+
+- [ ] T112 [P] [US3] Document HITL workflow in books/cookbook/methods/hitl-protocol-analysis.md
+- [ ] T113 [P] [US3] Document multi-sample validation workflow in books/cookbook/methods/cross-sample-validation.md
+- [ ] T114 [P] [US3] Document grammar promotion workflow in books/cookbook/methods/grammar-promotion.md
+- [ ] T115 [P] [US3] Update books/cookbook/README.md with workflow index and usage guidelines
+
+**Checkpoint**: Skills library expanded - LLM-guided analysis patterns established with 12+ methodology files
+
+---
+
+## Phase 6: User Story 4 - Evidence-Based Validation & Traceability (Priority: P2)
+
+**Goal**: Ensure all pattern hypotheses are validated against 3+ samples with complete evidence trails, building trust in generated grammars
+
+**Independent Test**: Provide patterns and samples, run validation, verify evidence includes sample paths, test code, and results for each
 
 ### Enhanced Validation Evidence (US4)
 
-- [ ] T083 [US4] Add evidence collection method to Validator scope recording PCAP file paths for each validation run
-- [ ] T084 [US4] Add test code preservation in Validator results storing generated pytest code in Notebook
-- [ ] T085 [US4] Add detailed pass/fail recording in Validator capturing assertion failures and exceptions
-- [ ] T086 [US4] Add validation summary method generating human-readable validation reports
+- [ ] T116 [US4] Add evidence collection method to GrammarValidator recording sample file paths for each validation run
+- [ ] T117 [US4] Add test code preservation in GrammarValidator results storing generated pytest code in Notebook
+- [ ] T118 [US4] Add detailed pass/fail recording in GrammarValidator capturing assertion failures and exceptions
+- [ ] T119 [US4] Add validation summary method generating human-readable validation reports
 
-### Negative Testing Implementation (US4)
+### Cross-Sample Consistency Metrics (US4)
 
-- [ ] T087 [US4] Add corrupted PCAP detection method in reshark/tools/pcap_reader.py
-- [ ] T088 [US4] Add negative test generation in Validator creating tests that should reject invalid data
-- [ ] T089 [US4] Add negative test execution in Validator verifying hypotheses correctly reject corrupted PCAPs
-- [ ] T090 [US4] Add negative test evidence recording in Notebook
+- [ ] T120 [US4] Add ConsistencyChecker methods calculating cross-sample pattern match rates
+- [ ] T121 [US4] Add consistency scoring method measuring how well patterns generalize across samples
+- [ ] T122 [US4] Add outlier detection method identifying samples that don't match the pattern
+- [ ] T123 [US4] Add consistency report generation creating consistency_report.md in Notebook
 
 ### Evidence Trail Completeness (US4)
 
-- [ ] T091 [US4] Add evidence verification method in Archivist checking all validation results have complete evidence before promotion
-- [ ] T092 [US4] Add evidence export method in Archivist generating evidence.json alongside grammars in Rulebook
-- [ ] T093 [US4] Enhance logging in reshark/utils/logging.py to capture detailed validation execution traces
-- [ ] T094 [US4] Add evidence audit method listing all evidence for a given grammar in Rulebook
+- [ ] T124 [US4] Add evidence verification method in GrammarValidator checking all validation results have complete evidence before promotion
+- [ ] T125 [US4] Add evidence export method in GrammarValidator generating evidence.json alongside grammars in Rulebook
+- [ ] T126 [US4] Enhance logging in reshark/utils/logging.py to capture detailed agent execution traces with skill usage
+- [ ] T127 [US4] Add evidence audit method listing all evidence for a given grammar in Rulebook
 
 ### Validation Reporting (US4)
 
-- [ ] T095 [US4] Create validation report generator in reshark/tools/report_generator.py
-- [ ] T096 [US4] Add report generation to Validator.execute() creating validation_report.md in Notebook
-- [ ] T097 [US4] Add grammar confidence scoring based on validation success rates across PCAPs
-- [ ] T098 [US4] Add validation history tracking showing all validation attempts for hypotheses
+- [ ] T128 [US4] Create validation report generator in reshark/utils/reports.py
+- [ ] T129 [US4] Add report generation to GrammarValidator.execute() creating validation_report.md in Notebook
+- [ ] T130 [US4] Add grammar confidence scoring based on validation success rates across samples
+- [ ] T131 [US4] Add validation history tracking showing all validation attempts for patterns
 
 **Checkpoint**: Evidence-based validation complete - all grammars have comprehensive validation evidence and traceability
 
@@ -268,42 +296,55 @@
 
 ### Documentation
 
-- [ ] T099 [P] Create getting-started.md in docs/ with setup instructions and first analysis walkthrough
-- [ ] T100 [P] Create architecture.md in docs/ explaining scope model, memory system, and workflow
-- [ ] T101 [P] Document analysis procedures in workspace/cookbook/ with Markdown files for entropy analysis, hypothesis generation, validation
-- [ ] T102 [P] Update README.md with Phase 1 capabilities and quickstart example
+- [ ] T132 [P] Update README.md with v2.0.0 architecture overview, HITL workflows, and quickstart example
+- [ ] T133 [P] Create docs/architecture.md explaining agent model, Books system, and skills-guided workflows
+- [ ] T134 [P] Create docs/setup.md with Dev Container setup, Ollama configuration, and Cline integration
+- [ ] T135 [P] Update project root QUICKSTART.md (already created) with additional troubleshooting and examples
 
 ### Error Handling and Edge Cases
 
-- [ ] T103 Add comprehensive error handling for corrupted PCAP files with clear user messages
-- [ ] T104 Add error handling for large PCAP files (>10GB) with memory-efficient streaming
-- [ ] T105 Add error handling for empty PCAPs or PCAPs with no valid packets
-- [ ] T106 Add error handling for missing session data with helpful recovery suggestions
-- [ ] T107 Add error handling for insufficient disk space in workspace directory
+- [ ] T136 Add comprehensive error handling for corrupted artifacts (PCAP/binary) with clear user messages
+- [ ] T137 Add error handling for large artifacts (>1GB) with memory-efficient streaming
+- [ ] T138 Add error handling for empty or invalid artifacts
+- [ ] T139 Add error handling for missing session data with helpful recovery suggestions
+- [ ] T140 Add error handling for insufficient disk space in books/ directories
+- [ ] T141 Add error handling for Ollama connection failures with retry logic
 
 ### Performance and Monitoring
 
-- [ ] T108 Add progress reporting for Observer scope when processing large PCAPs
-- [ ] T109 Add performance logging capturing analysis duration for each scope execution
-- [ ] T110 Add memory usage monitoring warning when approaching limits
-- [ ] T111 Optimize PCAP reading for 1GB+ files using chunk processing
+- [ ] T142 Add progress reporting for DataInterpreter when processing large artifacts
+- [ ] T143 Add performance logging capturing analysis duration for each agent execution
+- [ ] T144 Add memory usage monitoring warning when approaching limits
+- [ ] T145 Optimize artifact processing for 1GB+ files using chunk processing
+- [ ] T146 Add agent execution profiling for performance optimization
 
 ### Integration Testing
 
-- [ ] T112 Create end-to-end workflow test in tests/integration/test_workflow.py
-- [ ] T113 Add test for complete workflow with synthetic protocol verifying grammar generation
-- [ ] T114 Add test for workflow with validation failures verifying rejection behavior
-- [ ] T115 Add test for multi-session isolation verifying no cross-contamination
-- [ ] T116 Add test for large PCAP handling (1GB synthetic PCAP)
+- [ ] T147 Create end-to-end HITL workflow test in tests/integration/test_complete_workflow.py
+- [ ] T148 Add test for complete workflow with synthetic protocol verifying grammar generation with 3+ samples
+- [ ] T149 Add test for workflow with validation failures verifying rejection behavior
+- [ ] T150 Add test for multi-session isolation verifying no cross-contamination in Notebook
+- [ ] T151 Add test for large artifact handling (1GB synthetic PCAP)
+- [ ] T152 Add test for skills-guided analysis verifying methodology is followed
+- [ ] T153 Add test for Ollama integration verifying LLM responses incorporate skills context
+
+### Performance Benchmarks
+
+- [ ] T154 [P] Create performance benchmark suite in tests/performance/test_benchmarks.py
+- [ ] T155 Add benchmark for DataInterpreter processing 100MB PCAP (<30s target)
+- [ ] T156 Add benchmark for PatternInterpreter analysis (<10s per observation target)
+- [ ] T157 Add benchmark for GrammarValidator with 3 samples (<60s target)
+- [ ] T158 Add benchmark for complete HITL workflow (<30min target per SC-001)
 
 ### Validation and Cleanup
 
-- [ ] T117 Run pytest coverage report verifying >80% coverage (success criterion SC-009)
-- [ ] T118 Execute full workflow on real protocol example (success criterion SC-007)
-- [ ] T119 Validate all constitutional compliance tests pass (success criterion SC-010)
-- [ ] T120 Verify quickstart.md instructions work on clean environment
-- [ ] T121 Review all edge cases from spec are handled with tests
-- [ ] T122 Final code review for memory boundary enforcement correctness
+- [ ] T159 Run pytest coverage report verifying >80% coverage (success criterion SC-009)
+- [ ] T160 Execute full HITL workflow on real protocol example (success criterion SC-007)
+- [ ] T161 Validate all constitutional compliance tests pass (success criterion SC-010)
+- [ ] T162 Verify QUICKSTART.md instructions work on clean Dev Container environment
+- [ ] T163 Review all edge cases from spec.md are handled with tests
+- [ ] T164 Final code review for Books boundary enforcement correctness
+- [ ] T165 Verify skills library has 12+ methodology files (success criterion SC-004)
 
 **Checkpoint**: Phase 1 MVP complete - all success criteria met, ready for production use
 
@@ -316,88 +357,94 @@
 - **Setup (Phase 1)**: No dependencies - start immediately
 - **Foundational (Phase 2)**: Depends on Setup (Phase 1) - BLOCKS all user stories
 - **Research & Design (Phase 2.5)**: Can run in parallel with Foundational or after - Produces documentation artifacts
-- **User Story 1 (Phase 3)**: Depends on Foundational (Phase 2) - Core workflow
-- **User Story 2 (Phase 4)**: Depends on Foundational (Phase 2) and US1 implementation - Tests boundaries
-- **User Story 3 (Phase 5)**: Depends on US1 implementation - Adds CLI and session management
-- **User Story 4 (Phase 6)**: Depends on US1 Validator implementation - Enhances validation
+- **User Story 1 (Phase 3)**: Depends on Foundational (Phase 2) - Skills-guided HITL workflow
+- **User Story 2 (Phase 4)**: Depends on Foundational (Phase 2) and US1 implementation - Tests Books boundaries
+- **User Story 3 (Phase 5)**: Depends on US1 implementation - Expands skills library
+- **User Story 4 (Phase 6)**: Depends on US1 GrammarValidator implementation - Enhances validation evidence
 - **Polish (Phase 7)**: Depends on all user stories - Final improvements
 
 ### Critical Path (Minimum MVP)
 
 For fastest MVP delivery, focus on:
-1. Setup (T001-T008)
-2. Foundational (T009-T024)
-3. Research & Design (T123-T133) - Optional but recommended for architectural clarity
-4. User Story 1 (T025-T056) - Core protocol analysis
-5. User Story 2 (T057-T068) - Constitutional compliance
-6. Select polish tasks (T099-T102 for docs, T112-T116 for integration tests)
+1. Setup (T001-T009) - Project structure + Books + Dev Container + Skills foundation
+2. Foundational (T010-T031) - Books system + BaseAgent + ToolsRegistry
+3. Research & Design (T032-T046) - Optional but recommended for architectural clarity
+4. User Story 1 (T047-T087) - Skills library + Agents (DataInterpreter, PatternInterpreter, GrammarValidator) + HITL workflow
+5. User Story 2 (T088-T101) - Constitutional compliance + Books boundary tests
+6. Select polish tasks (T132-T135 for docs, T147-T153 for integration tests)
 
 ### User Story Dependencies
 
-- **US1 (Protocol Analysis)**: No dependencies on other stories - can complete independently after Foundational
-- **US2 (Memory Boundaries)**: Requires US1 scopes to exist for testing violations
-- **US3 (Manual Orchestration)**: Requires US1 scopes for CLI implementation
-- **US4 (Evidence Validation)**: Requires US1 Validator implementation for evidence enhancement
+- **US1 (Skills-Guided Analysis)**: No dependencies on other stories - can complete independently after Foundational
+- **US2 (Books Boundaries)**: Requires US1 agents to exist for testing violations
+- **US3 (Skills Expansion)**: Requires US1 agents for skills integration testing
+- **US4 (Evidence Validation)**: Requires US1 GrammarValidator implementation for evidence enhancement
 
 ### Within Each User Story
 
-- US1: Observer → Theorist → Validator → Archivist (sequential scope implementation)
-- US1: Test data generation (T054-T056) can be done anytime after Setup
-- US2: Integration tests (T061-T068) can run in parallel once US1 scopes exist
-- US3: CLI entry points (T069-T072) can run in parallel
-- US4: Evidence enhancements build on existing Validator
+- US1: Skills → DataInterpreter → PatternInterpreter → GrammarValidator → SessionManager/TaskOrchestrator → CLI (sequential agent implementation)
+- US1: Test data generation (T085-T087) can be done anytime after Setup
+- US2: Integration tests (T093-T101) can run in parallel once US1 agents exist
+- US3: Skills files (T102-T105) can be created in parallel
+- US4: Evidence enhancements build on existing GrammarValidator
 
 ### Parallel Opportunities
 
 **Setup Phase**:
-- T003, T004, T005, T006, T007, T008 can all run in parallel after T001-T002
+- T003, T004, T005, T006, T007, T008, T009 can all run in parallel after T001-T002
 
 **Foundational Phase**:
-- T010, T011, T012 (memory classes) in parallel
-- T014, T015, T016 (schemas) in parallel
-- T021, T022 (utilities) in parallel
+- T011, T012, T013, T014 (Books classes) in parallel
+- T016, T017, T018 (schemas) in parallel
+- T024, T025, T026 (utilities) in parallel
+- T029, T030, T031 (tool wrappers) in parallel
 
 **Research & Design Phase**:
-- T123, T124, T125, T126, T127 (all research topics) in parallel
-- T128 can follow research completion
-- T129, T130, T131, T132, T133 (all design docs) in parallel
+- T032, T033, T034, T035, T036, T037, T038 (all research topics) in parallel
+- T039 can follow research completion
+- T040, T041, T042, T043, T044, T045, T046 (all design docs) in parallel
 
 **User Story 1**:
-- T025, T030 (Observer + statistics utility) in parallel
-- T031, T040 (Theorist + test generator utility) in parallel
-- T037, T040 (Validator + test generator utility) in parallel
-- T044 (Archivist) in parallel with any above
-- T054, T055, T056 (test data) all in parallel
+- T047, T048, T049, T050, T051 (skills library files) all in parallel
+- T052, T057 (DataInterpreter + tool requirements) in parallel
+- T058, T064 (PatternInterpreter + tool requirements) in parallel
+- T065, T072 (GrammarValidator + requirements) in parallel
+- T073, T077 (SessionManager + TaskOrchestrator) in parallel
+- T085, T086, T087 (test data) all in parallel
 
 **User Story 2**:
-- T062, T063, T064 (boundary violation tests) in parallel
-- T065, T066, T067, T068 (compliance tests) in parallel
+- T094, T095, T096 (boundary violation tests) in parallel
+- T097, T098, T099, T100, T101 (compliance tests) in parallel
 
 **User Story 3**:
-- T069, T070, T071, T072 (CLI entry points) in parallel
+- T102, T103, T104, T105 (skills files) all in parallel
+- T112, T113, T114, T115 (cookbook docs) all in parallel
 
 **User Story 4**:
-- T095, T096, T097, T098 (reporting features) can be developed in parallel
+- T120, T121, T122, T123 (consistency metrics) can be developed in parallel
+- T128, T129, T130, T131 (reporting features) can be developed in parallel
 
 **Polish Phase**:
-- T099, T100, T101, T102 (documentation) all in parallel
-- T103, T104, T105, T106, T107 (error handling) all in parallel
-- T112, T113, T114, T115, T116 (integration tests) all in parallel
+- T132, T133, T134, T135 (documentation) all in parallel
+- T136, T137, T138, T139, T140, T141 (error handling) all in parallel
+- T147, T148, T149, T150, T151, T152, T153 (integration tests) all in parallel
+- T154, T155, T156, T157, T158 (performance benchmarks) all in parallel
 
 ---
 
-## Parallel Example: User Story 1 Observer Implementation
+## Parallel Example: User Story 1 DataInterpreter Implementation
 
 ```bash
 # Launch in parallel:
-Task T025: "Implement Observer scope class in reshark/scopes/observer.py"
-Task T030: "Create statistical analysis utilities in reshark/tools/statistics.py"
+Task T047: "Create protocol/data-extraction.md skill"
+Task T052: "Implement DataInterpreter agent class"
+Task T029: "Implement tshark_wrapper.py"
 
-# Then sequentially implement Observer methods:
-Task T026: "Add entropy calculation method"
-Task T027: "Add byte frequency analysis method"
-Task T028: "Add invariant detection method"
-Task T029: "Implement Observer.execute() method"
+# Then sequentially implement DataInterpreter methods:
+Task T053: "Add artifact extraction method"
+Task T054: "Add stream parsing method"
+Task T055: "Add observation recording method"
+Task T056: "Implement DataInterpreter.execute() with skill loading"
 ```
 
 ---
@@ -407,49 +454,52 @@ Task T029: "Implement Observer.execute() method"
 ### MVP First (US1 + US2 Only)
 
 **Week 1-2**: Foundation
-1. Complete Phase 1: Setup (T001-T008)
-2. Complete Phase 2: Foundational (T009-T024)
-3. Complete Phase 2.5: Research & Design (T123-T133) - Can overlap with Foundational
+1. Complete Phase 1: Setup (T001-T009)
+2. Complete Phase 2: Foundational (T010-T031)
+3. Complete Phase 2.5: Research & Design (T032-T046) - Can overlap with Foundational
 4. **Checkpoint**: Foundation ready
 
-**Week 3-4**: Core Workflow
-1. Complete Phase 3: User Story 1 (T025-T056)
-2. **Checkpoint**: End-to-end workflow functional
+**Week 3-5**: Skills-Guided HITL Workflow
+1. Complete Phase 3: User Story 1 (T047-T087)
+   - Week 3: Skills library + DataInterpreter + PatternInterpreter
+   - Week 4: GrammarValidator + constitutional 3-sample enforcement
+   - Week 5: SessionManager + TaskOrchestrator + CLI + Test data
+2. **Checkpoint**: End-to-end HITL workflow functional with Cline + Ollama
 
-**Week 5**: Constitutional Compliance
-1. Complete Phase 4: User Story 2 (T057-T068)
-2. **Checkpoint**: Memory boundaries enforced and tested
+**Week 6**: Constitutional Compliance
+1. Complete Phase 4: User Story 2 (T088-T101)
+2. **Checkpoint**: Books boundaries enforced and tested
 
-**Week 6**: Polish
-1. Complete documentation (T099-T102)
-2. Complete integration tests (T112-T116)
-3. **VALIDATE MVP**: Run full workflow, verify success criteria
+**Week 7**: Polish
+1. Complete documentation (T132-T135)
+2. Complete integration tests (T147-T153)
+3. **VALIDATE MVP**: Run full HITL workflow, verify success criteria
 
 ### Full Phase 1 Delivery
 
 Continue after MVP with:
 
-**Week 7**: Manual Control
-1. Complete Phase 5: User Story 3 (T069-T082)
-2. **Checkpoint**: CLI and session management working
+**Week 8**: Skills Expansion
+1. Complete Phase 5: User Story 3 (T102-T115)
+2. **Checkpoint**: 12+ skills files, Ollama integration tested, Cookbook workflows documented
 
-**Week 8**: Evidence Enhancement
-1. Complete Phase 6: User Story 4 (T083-T098)
-2. **Checkpoint**: Validation evidence complete
+**Week 9**: Evidence Enhancement
+1. Complete Phase 6: User Story 4 (T116-T131)
+2. **Checkpoint**: Validation evidence complete with cross-sample consistency metrics
 
-**Week 9**: Final Polish
-1. Complete remaining polish tasks (T103-T122)
-2. **FINAL VALIDATION**: All success criteria verified
+**Week 10**: Final Polish
+1. Complete remaining polish tasks (T136-T165)
+2. **FINAL VALIDATION**: All success criteria verified, performance benchmarks passed
 
 ### Incremental Delivery
 
 Each phase delivers value:
-1. **After Foundation**: Core abstractions ready
-2. **After US1**: Protocol analysis works end-to-end (MVP!)
-3. **After US2**: Constitutional guarantees verified
-4. **After US3**: Manual workflow control available
-5. **After US4**: Evidence trails complete
-6. **After Polish**: Production ready
+1. **After Foundation**: Core abstractions ready (Books, BaseAgent, ToolsRegistry)
+2. **After US1**: Skills-guided HITL protocol analysis works end-to-end (MVP!)
+3. **After US2**: Constitutional guarantees verified (3-sample minimum hardcoded)
+4. **After US3**: Skills library expanded with 12+ methodology files
+5. **After US4**: Evidence trails complete with cross-sample metrics
+6. **After Polish**: Production ready with >80% test coverage
 
 ### Parallel Team Strategy
 
@@ -457,19 +507,20 @@ With 3 developers:
 
 **Week 1-2 (Together)**: Complete Setup + Foundational + Research & Design
 
-**Week 3-4 (Parallel)**:
-- Dev A: Observer + Theorist (T025-T036)
-- Dev B: Validator (T037-T043)
-- Dev C: Archivist + Orchestration (T044-T053)
-- All: Test data generation (T054-T056)
+**Week 3-5 (Parallel)**:
+- Dev A: Skills library + DataInterpreter (T047-T057)
+- Dev B: PatternInterpreter (T058-T064)
+- Dev C: GrammarValidator (T065-T072)
+- All: SessionManager + TaskOrchestrator + CLI (T073-T084)
+- All: Test data generation (T085-T087)
 
-**Week 5 (Parallel)**:
-- Dev A: Memory boundary enforcement (T057-T060)
-- Dev B: Constitutional tests (T061-T068)
-- Dev C: Documentation start (T099-T102)
+**Week 6 (Parallel)**:
+- Dev A: Books boundary enforcement (T088-T092)
+- Dev B: Constitutional tests (T093-T101)
+- Dev C: Documentation start (T132-T135)
 
-**Week 6-8 (Parallel)**:
-- Dev A: CLI implementation (US3)
+**Week 7-10 (Parallel)**:
+- Dev A: Skills expansion (US3)
 - Dev B: Evidence enhancement (US4)
 - Dev C: Integration tests and polish
 
@@ -479,31 +530,32 @@ With 3 developers:
 
 | Success Criterion | Verified By Tasks | How to Test |
 |-------------------|------------------|-------------|
-| SC-001: 30-min end-to-end | T112, T118 | Run analyze_protocol.py with synthetic PCAP, time to completion |
-| SC-002: 100% boundary enforcement | T057-T068 | Run constitutional compliance test suite |
-| SC-003: Traceable operations | T060, T067 | Inspect Notebook entries for timestamp and scope fields |
-| SC-004: Validation rejects failures | T041, T113, T114 | Run validation with failing hypotheses, verify rejection |
-| SC-005: Grammars include tests | T047, T113 | Check workspace/rulebook/tests/ for generated pytest files |
-| SC-006: 1GB PCAP handling | T116 | Process 1GB synthetic PCAP, verify completion |
-| SC-007: Real protocol example | T118 | Complete analysis of real-world protocol |
-| SC-008: Cookbook documentation | T101 | Verify workspace/cookbook/ contains procedure documentation |
-| SC-009: 80% test coverage | T117 | Run pytest-cov, verify coverage report |
-| SC-010: Constitutional compliance | T061-T068, T119 | Run tests/integration/test_constitution.py |
+| SC-001: <30min end-to-end | T147-T148, T158, T160 | Run HITL workflow with Cline, time to completion |
+| SC-002: 100% constitutional (3-sample) | T088-T101 | Run constitutional compliance test suite |
+| SC-003: Agent responsibility isolation | T088, T099 | Verify Books access boundaries, test violations |
+| SC-004: Skills-guided consistency | T051, T107, T152, T165 | Verify 12+ skills files, test LLM methodology adherence |
+| SC-005: <8K LOC Phase 1 | T159 (coverage + LOC) | Count lines in reshark/ excluding Phase 2 autonomous/ |
+| SC-006: Ollama performance (<10s) | T156, T153 | Benchmark agent calls with Ollama, verify <10s |
+| SC-007: ToolsRegistry completeness | T027-T031 | Verify tshark, hexdump, strings, file wrappers exist |
+| SC-008: Cross-sample validation (3+) | T066, T098, T148 | Test GrammarValidator enforces 3-sample minimum |
+| SC-009: Notebook session isolation | T026, T150 | Test UUID-based directories, verify no cross-contamination |
+| SC-010: Dev Container HITL workflow | T007, T162 | Test QUICKSTART.md in clean Dev Container |
 
 ---
 
 ## Notes
 
-- **No TDD**: Tests are for constitutional compliance only, not TDD workflow. Implementation comes first.
+- **HITL Focus**: Phase 1 prioritizes human-in-the-loop workflows with Cline + Ollama. Autonomous mode (Phase 2) deferred.
+- **Skills-Guided**: LLM reads markdown methodology files before agent execution for consistent analysis patterns.
 - **[P] tasks**: Different files, no dependencies within phase - can parallelize
 - **[Story] labels**: Maps to user stories US1-US4 from spec.md for traceability
 - **File paths**: All paths are absolute from repository root
-- **Session isolation**: Each protocol analysis gets unique session ID
-- **Evidence trails**: All operations logged to Notebook with timestamps
-- **Manual orchestration**: Phase 1 focuses on scripts, not autonomous agents
-- **Constitutional gates**: Memory boundaries and validation requirements enforced by design
+- **Session isolation**: Each analysis gets unique UUID-based session in books/notebook/sessions/
+- **Evidence trails**: All operations logged to Notebook with timestamps and agent attribution
+- **Books boundaries**: Only GrammarValidator can write to Rulebook, enforced by BaseAgent class
+- **Constitutional gates**: 3-sample minimum hardcoded in GrammarValidator, cannot be overridden
 - **Incremental value**: Each user story delivers independent value
-- **MVP = US1 + US2**: Core workflow + constitutional compliance = minimum viable product
+- **MVP = US1 + US2**: Skills-guided HITL workflow + constitutional compliance = minimum viable product
 
 ---
 
@@ -511,13 +563,19 @@ With 3 developers:
 
 From plan.md risk assessment:
 
-**High Risk - PCAP parsing edge cases**:
-- Addressed by: T013 (PCAP validation), T103-T105 (error handling), T116 (large file test)
+**High Risk - Tool wrapper errors (tshark timeouts, malformed output)**:
+- Addressed by: T029-T031 (tool wrappers with error handling), T136-T141 (comprehensive error handling), T155 (benchmark tshark performance)
 
-**High Risk - Validation framework correctness**:
-- Addressed by: T061-T068 (constitutional tests), T113-T114 (validation failure tests)
+**High Risk - LLM hallucination in pattern detection**:
+- Addressed by: T047-T051 (skills-guided prompts), T066 (3-sample constitutional requirement), T116-T123 (evidence-based validation with consistency metrics)
 
-**Medium Risk - Memory boundary enforcement**:
+**High Risk - Constitutional compliance enforcement (3-sample minimum)**:
+- Addressed by: T066 (hardcoded check in GrammarValidator), T088-T101 (constitutional compliance tests), T098 (test <3 samples rejection)
+
+**Medium Risk - Skills library maintainability (markdown sprawl)**:
+- Addressed by: T009 (taxonomic organization), T051 (README with guidelines), T106 (versioning mechanism), T107 (validation tests)
+
+**Medium Risk - Agent coordination complexity**:
 - Addressed by: T057-T060 (boundary implementation), T061-T068 (boundary tests)
 
 **Medium Risk - Performance on large PCAPs**:
@@ -525,3 +583,11 @@ From plan.md risk assessment:
 
 **Low Risk - Documentation completeness**:
 - Addressed by: T099-T102 (core docs), T101 (cookbook procedures)
+**Medium Risk - Agent coordination complexity**:
+- Addressed by: T078-T080 (TaskOrchestrator with clear workflow), T016-T018 (well-defined Notebook schemas), T147-T153 (integration tests)
+
+**Medium Risk - Performance on large artifacts (>1GB)**:
+- Addressed by: T142 (progress reporting), T145 (chunk processing), T151 (1GB test), T155-T158 (performance benchmarks)
+
+**Low Risk - Dev Container setup complexity**:
+- Addressed by: T007 (docker-compose with pre-configured services), T134 (documented setup in docs/setup.md), T162 (QUICKSTART verification)

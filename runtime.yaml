@@ -1,0 +1,59 @@
+name: reshark-runtime
+version: 1.0.0
+
+# Use custom Docker image with all reShark dependencies
+image: reshark:latest
+
+# Build configuration
+build:
+  dockerfile: docker/Dockerfile
+  context: .
+
+# Runtime configuration
+runtime:
+  type: docker
+  
+# Python dependencies (installed in Dockerfile)
+dependencies:
+  python:
+    - pyshark
+    - scapy
+    - dpkt
+    - pandas
+    - numpy
+    - scikit-learn
+    - pydantic
+    - rich
+    - typer
+
+# System tools (installed in Dockerfile)
+system_packages:
+  - tshark
+  - termshark
+  - wireshark-common  # includes editcap, mergecap, capinfos
+
+# Environment variables
+environment:
+  PYTHONUNBUFFERED: "1"
+  DEBIAN_FRONTEND: noninteractive
+  RESHARK_WORKSPACE: /workspace
+
+# Working directory
+workdir: /workspace
+
+# Ports (if needed for future web interface)
+ports:
+  - "8080:8080"
+
+# Volume mounts
+volumes:
+  - ./notebook:/workspace/notebook
+  - ./rulebook:/workspace/rulebook
+  - ./cookbook:/workspace/cookbook
+  - ./scopes:/workspace/scopes
+  - ./validation:/workspace/validation
+  - ./interpreters:/workspace/interpreters
+  - ./orchestration:/workspace/orchestration
+  - ./tools:/workspace/tools
+  - ./scripts:/workspace/scripts
+  - ./pcaps:/workspace/pcaps

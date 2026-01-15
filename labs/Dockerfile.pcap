@@ -1,0 +1,60 @@
+# Use a stable Python base for analysis
+FROM python:3.11-slim-bookworm
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install system-level protocol analysis tools
+# We use wireshark-common to get the core libraries without the GUI
+# Note: capinfos, editcap, mergecap are included with tshark, not separate packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tshark \
+    wireshark-common \
+    termshark \
+    tcpdump \
+    wget \
+    curl \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix Tshark permissions so it can run without 'sudo'
+RUN echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections && \
+    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure wireshark-common
+
+# Install Python-based Analysis Stack
+RUN pip install --no-cache-dir \
+    pyshark \
+    scapy \
+    dpkt \
+    pandas \
+    numpy \
+    scikit-learn \
+    pydantic \
+    rich \
+    typer \
+    pytest \
+    qdrant-client
+
+# Create a non-root user 'reshark' (aligned with standard host UID 1000)
+RUN groupadd -g 1000 reshark && \
+    useradd -u 1000 -g reshark -m -s /bin/bash reshark && \
+    usermod -a -G wireshark reshark
+
+# Set up the workspace and the "Books" structure
+WORKDIR /workspace
+
+# Pre-creating mount points for the volumes (The "Books")
+# RUN mkdir -p /workspace/notebook \
+#     /workspace/rulebook/grammars \
+#     /workspace/rulebook/tests \
+#     /workspace/cookbook \
+#     /workspace/pcaps \
+#     && chown -R reshark:reshark /workspace
+
+USER reshark
+
+# Default command
+CMD ["/bin/bash"]

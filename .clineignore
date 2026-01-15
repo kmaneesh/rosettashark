@@ -1,0 +1,7 @@
+.git/
+*.lock
+.env
+.vscode/
+.npm/
+node_modules/
+.specify

@@ -1,9 +1,9 @@
 # reShark System Implementation Technical Design (SITD)
 
-**Version**: 1.0.0  
-**Date**: 2026-01-11  
+**Version**: 2.0.0  
+**Date**: 2026-01-15  
 **Status**: Draft  
-**Implements**: System Requirements Specification v1.0.0  
+**Implements**: System Requirements Specification v2.0.0  
 **Governed By**: reShark Constitution v2.0.0
 
 ---
@@ -12,7 +12,7 @@
 
 ### 1.1 Purpose
 
-This document provides the technical design for implementing reShark, detailing architecture, components, interfaces, and data structures for both Phase 1 (OpenHands-only) and Phase 2 (LangGraph orchestration).
+This document provides the technical design for implementing reShark, a general-purpose reverse engineering framework. It details architecture, components, interfaces, and data structures for both Human-in-the-Loop (HITL) mode (Dev Container + Cline + Local LLM) and Autonomous mode (OpenHands + Local LLM), emphasizing knowledge transfer between modes.
 
 ### 1.2 Scope
 
@@ -29,198 +29,234 @@ This design covers:
 1. **Files are Truth**: All authoritative state lives on disk, not in memory
 2. **Explicit over Implicit**: No hidden state or silent assumptions
 3. **Testable by Default**: Every component has defined test interfaces
-4. **Progressive Complexity**: Phase 1 proves concepts, Phase 2 adds scale
-5. **Constitutional Compliance**: All designs enforce Constitution v2.0.0
+4. **Learn then Automate**: HITL mode teaches, Autonomous mode applies learned patterns
+5. **Mode Symmetry**: Both modes use same components (agents, skills, tools, books, labs)
+6. **Constitutional Compliance**: All designs enforce Constitution v2.0.0
+7. **General Purpose**: Framework supports multiple reverse engineering domains, not just protocols
 
 ---
 
 ## 2. System Architecture
 
-### 2.1 High-Level Architecture (Phase 1)
+### 2.1 High-Level Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    reShark System                      │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              OpenHands Execution Layer               │  │
-│  │                                                       │  │
-│  │  ┌───────────────────────────────────────────────┐  │  │
-│  │  │         Docker Container Sandbox              │  │  │
-│  │  │                                               │  │  │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  │  │  │
-│  │  │  │  tshark  │  │  scapy   │  │  numpy   │  │  │  │
-│  │  │  └──────────┘  └──────────┘  └──────────┘  │  │  │
-│  │  │                                               │  │  │
-│  │  │              MCP Tool Layer                   │  │  │
-│  │  └───────────────────────────────────────────────┘  │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              Scope Layer (Python)                  │  │
-│  │                                                       │  │
-│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐       │  │
-│  │  │ Observer  │  │ Theorist  │  │ Validator │       │  │
-│  │  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘       │  │
-│  │        │               │               │             │  │
-│  │        └───────────────┼───────────────┘             │  │
-│  │                        │                             │  │
-│  │                   ┌────▼────┐                        │  │
-│  │                   │Archivist│                        │  │
-│  │                   └─────┬───┘                        │  │
-│  └─────────────────────────┼───────────────────────────┘  │
-│                            │                               │
-│  ┌─────────────────────────▼───────────────────────────┐  │
-│  │           Memory Layer (File System)                 │  │
-│  │                                                       │  │
-│  │  Notebook/     Rulebook/     Cookbook/     PCAPs/    │  │
-│  │  ├─ session-1/ ├─ grammars/  ├─ methods/  ├─ raw/   │  │
-│  │  ├─ session-2/ ├─ tests/     ├─ examples/ ├─ golden/│  │
-│  │  └─ archives/  └─ README.md  └─ README.md └─ synth/ │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │      Orchestration Layer (Phase 1: Scripts)          │  │
-│  │                                                       │  │
-│  │  workflow_scripts/                                   │  │
-│  │  ├─ analyze_protocol.py                              │  │
-│  │  ├─ validate_grammar.py                              │  │
-│  │  └─ promote_to_rulebook.py                           │  │
-│  └─────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                    reShark Framework                              │
+│                                                                   │
+│  ┌─────────────────────────┐    ┌─────────────────────────┐    │
+│  │   HITL Mode             │    │   Autonomous Mode       │    │
+│  │   (Interactive)         │    │   (Self-Directed)       │    │
+│  │                         │    │                         │    │
+│  │  Dev Container          │    │  OpenHands              │    │
+│  │  + Cline                │    │  + Local LLM            │    │
+│  │  + Local LLM            │    │                         │    │
+│  │                         │    │                         │    │
+│  │  Human Guidance ────────┼────┼──> Learned Patterns     │    │
+│  │  Knowledge Capture      │    │    Pattern Application  │    │
+│  └────────────┬────────────┘    └──────────┬──────────────┘    │
+│               │                            │                    │
+│               └────────────┬───────────────┘                    │
+│                            │                                    │
+│               ┌────────────▼────────────┐                       │
+│               │      Components         │                       │
+│               │   (Shared by Both)      │                       │
+│               └────────────┬────────────┘                       │
+│                            │                                    │
+│         ┌──────────────────┼───────────────────┐               │
+│         │                  │                   │               │
+│    ┌────▼────┐      ┌─────▼─────┐      ┌─────▼─────┐         │
+│    │ Agents  │      │  Skills   │      │   Tools   │         │
+│    │(/agents)│      │ (/skills) │      │  (/tools) │         │
+│    └────┬────┘      └─────┬─────┘      └─────┬─────┘         │
+│         │                  │                   │               │
+│         │    ┌─────────────▼────────────┐      │               │
+│         │    │        Books             │      │               │
+│         └───>│  (/books)                │<─────┘               │
+│              │  - notebook (working)    │                      │
+│              │  - rulebook (validated)  │                      │
+│              │  - cookbook (procedures) │                      │
+│              │  - patternbook (vectors) │                      │
+│              └──────────────┬───────────┘                      │
+│                             │                                  │
+│                    ┌────────▼─────────┐                        │
+│                    │   Lab (/labs)    │                        │
+│                    │  Pre-configured  │                        │
+│                    │   Environment    │                        │
+│                    └──────────────────┘                        │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Component Interactions (Phase 1)
+### 2.2 Component Interactions (HITL Mode)
 
 ```
-Human Operator
+Human Operator (via Cline)
       │
-      │ 1. Initiates workflow
+      │ 1. Initiates analysis workflow
       ↓
-analyze_protocol.py (Orchestration Script)
+Cline AI Assistant
       │
-      │ 2. Invokes Observer
+      │ 2. Suggests approach, invokes agents
       ↓
-Observer Scope
+Interpreter Agent (/agents/interpreters)
       │
-      │ 3. Calls tshark via MCP
+      │ 3. Calls tool scripts (via /tools)
       ↓
-MCP Tool Layer → tshark execution → PCAP parsed
+Tool execution → Data parsed
       │
-      │ 4. Returns stream data
+      │ 4. Returns structured data
       ↓
-Observer Scope
+Interpreter Agent
       │
-      │ 5. Computes statistics
-      │ 6. Writes to Notebook
+      │ 5. Applies skill (pattern detection)
+      ↓
+Pattern Detection Skill (/skills)
+      │
+      │ 6. Computes statistics
+      │ 7. Writes to Notebook
       ↓
 Notebook/session-X/observations.json
       │
-      │ 7. Orchestration script reads Notebook
-      ↓
-analyze_protocol.py
-      │
-      │ 8. Invokes Theorist
-      ↓
-Theorist Scope
-      │
-      │ 9. Reads observations from Notebook
-      │ 10. Generates hypotheses
-      │ 11. Writes to Notebook
-      ↓
-Notebook/session-X/hypotheses.json
-      │
-      │ 12. Orchestration script reads Notebook
-      ↓
-analyze_protocol.py
-      │
-      │ 13. Invokes Validator
-      ↓
-Validator Scope
-      │
-      │ 14. Reads hypotheses from Notebook
-      │ 15. Generates test suite
-      │ 16. Executes tests via scapy/MCP
-      │ 17. Writes results to Notebook
-      ↓
-Notebook/session-X/validation.json
-      │
-      │ 18. Human reviews validation results
+      │ 8. Human reviews via Cline
       ↓
 Human Operator
       │
-      │ 19. Approves promotion
+      │ 9. Approves, requests hypothesis generation
       ↓
-promote_to_rulebook.py
+Orchestration Agent (/agents/orchestration)
       │
-      │ 20. Invokes Archivist
+      │ 10. Reads observations from Notebook
+      │ 11. Invokes hypothesis generation skill
       ↓
-Archivist Scope
+Hypothesis Skill (/skills)
       │
-      │ 21. Reads validated hypothesis
-      │ 22. Generates grammar
-      │ 23. Writes to Rulebook
+      │ 12. Generates hypotheses
+      │ 13. Writes to Notebook
       ↓
-Rulebook/grammars/protocol_v1.py
-Rulebook/tests/test_protocol_v1.py
+Notebook/session-X/hypotheses.json
+      │
+      │ 14. Human reviews via Cline
+      ↓
+Human Operator
+      │
+      │ 15. Approves validation
+      ↓
+Validation Agent (/agents/validation)
+      │
+      │ 16. Reads hypotheses from Notebook
+      │ 17. Generates test suite
+      │ 18. Executes tests via tools
+      │ 19. Writes results to Notebook
+      ↓
+Notebook/session-X/validation.json
+      │
+      │ 20. Human reviews validation results
+      │ 21. Learned workflow captured in Cookbook
+      ↓
+Human Operator
+      │
+      │ 22. Approves promotion
+      ↓
+Orchestration Agent
+      │
+      │ 23. Reads validated hypothesis
+      │ 24. Generates grammar
+      │ 25. Writes to Rulebook
+      ↓
+Rulebook/grammars/target_v1.py
+Rulebook/tests/test_target_v1.py
+Cookbook/workflows/analysis_workflow.md
 ```
 
-### 2.3 Phase 2 Architecture Changes
+### 2.3 Autonomous Mode Architecture
 
 ```
-Phase 1 Architecture
-      +
-LangGraph Orchestration Layer
-      │
-      │ Replaces workflow scripts
-      │ Manages Scope state transitions
-      │
-      ├─ Observer Node
-      ├─ Theorist Node
-      ├─ Validator Node
-      └─ Archivist Node
-      +
-Patternbook (Qdrant)
-      │
-      │ Vector embeddings
-      │ Similarity search
-      └─ Analogical hints for Theorist
+┌──────────────────────────────────────────────────────┐
+│         Autonomous Mode (OpenHands + Local LLM)       │
+│                                                       │
+│  OpenHands Execution Environment                     │
+│       │                                               │
+│       │ 1. Reads workflow from Cookbook              │
+│       ↓                                               │
+│  Cookbook/workflows/analysis_workflow.md             │
+│       │                                               │
+│       │ 2. Loads learned patterns from Patternbook   │
+│       ↓                                               │
+│  Patternbook (Vector DB)                             │
+│       │                                               │
+│       │ 3. Autonomous orchestration begins           │
+│       ↓                                               │
+│  Orchestration Agent                                 │
+│       │                                               │
+│       ├──> Interpreter Agent                         │
+│       │    (applies learned skills)                  │
+│       │                                               │
+│       ├──> Validation Agent                          │
+│       │    (automated testing)                       │
+│       │                                               │
+│       └──> Scope Agents                              │
+│            (specialized analysis)                    │
+│                                                       │
+│  All agents write to Notebook                        │
+│  Validated results promote to Rulebook              │
+│                                                       │
+│  Checkpoints trigger human review:                   │
+│  - Validation failures                               │
+│  - Confidence thresholds                             │
+│  - Conflicting patterns                              │
+│                                                       │
+└──────────────────────────────────────────────────────┘
+
+Knowledge Transfer Flow:
+HITL Mode → Cookbook (procedures)
+         → Skills (reusable capabilities)
+         → Patternbook (pattern embeddings)
+         → Rulebook (validated models)
+                    ↓
+            Autonomous Mode reads and applies
 ```
 
 ---
 
 ## 3. Component Design
 
-### 3.1 Scope System
+### 3.1 Agent System
 
-#### 3.1.1 Scope Base Class
+Agents are autonomous components that perform specialized analysis tasks. They operate in both HITL and Autonomous modes, using skills and tools to accomplish their objectives.
+
+#### 3.1.1 Agent Base Class
 
 ```python
-# reshark/scopes/base.py
+# reshark/agents/base.py
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 import json
 from datetime import datetime
 
-class Scope(ABC):
+class Agent(ABC):
     """
-    Base class for all reShark Scopes.
+    Base class for all reShark Agents.
     Enforces Constitutional constraints and memory boundaries.
+    Agents can invoke skills and tools to accomplish tasks.
     """
     
     def __init__(self, notebook_path: Path, rulebook_path: Path, 
-                 cookbook_path: Path):
+                 cookbook_path: Path, skills_registry: Dict,
+                 tools_registry: Dict):
         self.notebook_path = notebook_path
         self.rulebook_path = rulebook_path
         self.cookbook_path = cookbook_path
+        self.skills = skills_registry
+        self.tools = tools_registry
         self.session_id = None
+        self.mode = None  # 'hitl' or 'autonomous'
         
     @abstractmethod
     def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Main execution method for Scope logic.
+        Main execution method for Agent logic.
         
         Args:
             inputs: Dictionary of input parameters
@@ -229,9 +265,21 @@ class Scope(ABC):
             Dictionary of results
             
         Raises:
-            ScopeError: If execution fails
+            AgentError: If execution fails
         """
         pass
+    
+    def invoke_skill(self, skill_name: str, params: Dict[str, Any]) -> Any:
+        """Invoke a reusable skill from the skills library."""
+        if skill_name not in self.skills:
+            raise ValueError(f"Skill {skill_name} not found")
+        return self.skills[skill_name].execute(params)
+    
+    def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> Any:
+        """Invoke a tool from the tools library."""
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool {tool_name} not found")
+        return self.tools[tool_name].run(params)
     
     def read_notebook(self, key: str) -> Optional[Any]:
         """Read data from Notebook."""
@@ -362,8 +410,8 @@ class Observer(Scope):
     
     def _extract_streams(self, pcap_path: str, 
                         filter_expr: str = None) -> List[bytes]:
-        """Extract byte streams using tshark via MCP."""
-        # MCP call to tshark
+        """Extract byte streams using tshark directly."""
+        # Direct tshark subprocess call
         cmd = ["tshark", "-r", pcap_path, "-T", "fields", 
                "-e", "data.data"]
         if filter_expr:
@@ -735,7 +783,7 @@ def test_{hypothesis['type']}(pcap_file):
         
         try:
             # Parse PCAP and apply test logic
-            # This would invoke scapy/tshark via MCP
+            # This invokes scapy/tshark directly
             return True  # Placeholder
         except AssertionError:
             return False
@@ -990,81 +1038,131 @@ def test_cross_pcap_validation():
         }
 ```
 
-### 3.2 Memory System Design
+### 3.2 Books System Design (Memory Layer)
+
+Books are the knowledge storage system, organized by purpose and persistence level.
 
 #### 3.2.1 File System Structure
 
 ```
 reshark/
-├── notebook/                    # Short-term working memory
-│   ├── session-20260111-001/
-│   │   ├── observations.json
-│   │   ├── hypotheses.json
-│   │   ├── validation.json
-│   │   ├── evidence_*.json
-│   │   └── session.log
-│   ├── session-20260111-002/
-│   └── archives/
-│       └── session-20260110-001/
+├── books/                       # Knowledge storage
+│   ├── notebook/               # Short-term working memory (session-specific)
+│   │   ├── sessions/
+│   │   │   ├── session-20260115-001/
+│   │   │   │   ├── observations.json
+│   │   │   │   ├── hypotheses.json
+│   │   │   │   ├── validation.json
+│   │   │   │   ├── evidence_*.json
+│   │   │   │   └── session.log
+│   │   │   └── session-20260115-002/
+│   │   └── archives/           # Completed sessions
+│   │       └── session-20260114-001/
+│   │
+│   ├── rulebook/               # Validated models and grammars
+│   │   ├── grammars/
+│   │   │   ├── protocol_foo_v1.py
+│   │   │   ├── protocol_foo_v1.meta.json
+│   │   │   ├── binary_format_bar_v1.py
+│   │   │   └── binary_format_bar_v1.meta.json
+│   │   ├── schemas/            # Structured schemas
+│   │   │   ├── protocol_foo_v1.yaml
+│   │   │   └── binary_format_bar_v1.json
+│   │   ├── tests/
+│   │   │   ├── test_protocol_foo_v1.py
+│   │   │   └── test_binary_format_bar_v1.py
+│   │   └── README.md
+│   │
+│   ├── cookbook/               # Procedural knowledge (HOW-TO)
+│   │   ├── workflows/          # Learned workflows
+│   │   │   ├── analysis_workflow.md
+│   │   │   ├── validation_workflow.md
+│   │   │   └── grammar_construction.md
+│   │   ├── methods/            # Analysis methods
+│   │   │   ├── pattern_detection.md
+│   │   │   ├── field_extraction.md
+│   │   │   └── state_inference.md
+│   │   ├── examples/           # Example analyses
+│   │   │   ├── binary_protocol_example.md
+│   │   │   └── data_format_example.md
+│   │   └── README.md
+│   │
+│   └── patternbook/            # Vector embeddings (Autonomous mode)
+│       ├── embeddings/         # Pattern vectors
+│       ├── index/              # Vector index
+│       └── config.yaml         # Qdrant configuration
 │
-├── rulebook/                    # Validated protocol truth
-│   ├── grammars/
-│   │   ├── protocol_foo_v1.py
-│   │   ├── protocol_foo_v1.meta.json
-│   │   ├── protocol_bar_v1.py
-│   │   └── protocol_bar_v1.meta.json
-│   ├── tests/
-│   │   ├── test_protocol_foo_v1.py
-│   │   └── test_protocol_bar_v1.py
-│   └── README.md
-│
-├── cookbook/                    # Procedural knowledge
-│   ├── methods/
-│   │   ├── entropy_analysis.md
-│   │   ├── field_extraction.md
-│   │   └── state_inference.md
-│   ├── examples/
-│   │   ├── simple_rpc_analysis.md
-│   │   └── binary_protocol_workflow.md
-│   └── README.md
-│
-├── pcaps/                       # Input data
-│   ├── raw/
-│   ├── golden/                  # Reference sessions
-│   └── synthetic/               # Generated test protocols
-│
-├── scopes/                   # Scope implementations
+├── agents/                     # Agent implementations
 │   ├── __init__.py
 │   ├── base.py
-│   ├── observer.py
-│   ├── theorist.py
-│   ├── validator.py
-│   └── archivist.py
+│   ├── interpreters/           # Data interpreters
+│   │   ├── __init__.py
+│   │   ├── pattern_analyzer.py
+│   │   └── structure_detector.py
+│   ├── orchestration/          # Workflow coordinators
+│   │   ├── __init__.py
+│   │   ├── hitl_orchestrator.py
+│   │   └── autonomous_orchestrator.py
+│   ├── validation/             # Validation agents
+│   │   ├── __init__.py
+│   │   ├── hypothesis_tester.py
+│   │   └── cross_validator.py
+│   └── scopes/                 # Specialized scopes
+│       ├── __init__.py
+│       ├── observer.py
+│       └── theorist.py
 │
-├── orchestration/               # Phase 1: Scripts
-│   ├── analyze_protocol.py
-│   ├── validate_grammar.py
-│   └── promote_to_rulebook.py
+├── skills/                     # Reusable capabilities
+│   ├── __init__.py
+│   ├── pattern_detection.py
+│   ├── entropy_analysis.py
+│   ├── hypothesis_generation.py
+│   ├── grammar_construction.py
+│   └── test_generation.py
 │
-├── tools/                       # Tool wrappers
-│   ├── mcp_client.py
-│   └── tshark_wrapper.py
+├── tools/                      # Scripts and utilities
+│   ├── scripts/               # Executable scripts
+│   │   ├── pcap_parser.py
+│   │   ├── binary_analyzer.py
+│   │   └── format_converter.py
+│   ├── __init__.py
+│   ├── pcap_tools.py          # PCAP-specific utilities
+│   ├── binary_tools.py        # Binary analysis utilities
+│   └── statistics.py          # Statistical utilities
+│
+├── labs/                       # Lab environment configs
+│   ├── Dockerfile.openhands   # Autonomous mode container
+│   ├── Dockerfile.pcap        # Analysis tools container
+│   └── README.md
+│
+├── data/                       # Input/output data (not in books)
+│   ├── input/                  # Raw input data
+│   │   ├── pcaps/
+│   │   ├── binaries/
+│   │   └── logs/
+│   └── output/                 # Generated artifacts
+│       └── reports/
 │
 ├── tests/                       # System tests
-│   ├── test_observer.py
-│   ├── test_theorist.py
-│   ├── test_validator.py
-│   └── test_archivist.py
+│   ├── test_agents/
+│   │   ├── test_interpreters.py
+│   │   ├── test_orchestration.py
+│   │   └── test_validation.py
+│   ├── test_skills/
+│   │   ├── test_pattern_detection.py
+│   │   └── test_entropy_analysis.py
+│   └── test_integration/
+│       ├── test_hitl_mode.py
+│       └── test_autonomous_mode.py
 │
-├── docker/                      # Execution environment
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── tools.txt
+├── .devcontainer/               # VSCode dev container config
+│   ├── devcontainer.json
+│   └── Dockerfile
 │
 ├── docs/                        # Documentation
 │   ├── constitution-v2.md
-│   ├── srs-v1.md
-│   └── sitd-v1.md
+│   ├── srs-v2.md
+│   └── sitd-v2.md
 │
 ├── pyproject.toml               # Poetry dependencies
 ├── README.md
@@ -1149,63 +1247,223 @@ reshark/
 }
 ```
 
-### 3.3 Tool Integration (MCP Layer)
+### 3.3 Skills Library Design
 
-#### 3.3.1 MCP Client
+Skills are reusable capabilities that can be invoked by agents or humans. They encapsulate specific analysis techniques and can be composed into complex workflows.
+
+#### 3.3.1 Skill Base Class
 
 ```python
-# reshark/tools/mcp_client.py
+# reshark/skills/base.py
+
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Optional
+from pathlib import Path
+import json
+
+class Skill(ABC):
+    """
+    Base class for all reShark Skills.
+    Skills are reusable, composable capabilities.
+    """
+    
+    def __init__(self, name: str, description: str, 
+                 version: str = "1.0.0"):
+        self.name = name
+        self.description = description
+        self.version = version
+        self.execution_count = 0
+        
+    @abstractmethod
+    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the skill with given parameters.
+        
+        Args:
+            params: Input parameters for the skill
+            
+        Returns:
+            Results dictionary
+        """
+        pass
+    
+    @abstractmethod
+    def get_schema(self) -> Dict[str, Any]:
+        """
+        Return JSON schema for input parameters.
+        Used for validation and documentation.
+        """
+        pass
+    
+    def validate_params(self, params: Dict[str, Any]) -> bool:
+        """Validate input parameters against schema."""
+        schema = self.get_schema()
+        # Implement JSON schema validation
+        return True  # Simplified
+    
+    def log_execution(self, params: Dict[str, Any], 
+                     result: Dict[str, Any]) -> None:
+        """Log skill execution for learning."""
+        self.execution_count += 1
+        # Log to appropriate location for pattern learning
+
+
+# Example: Pattern Detection Skill
+class PatternDetectionSkill(Skill):
+    """
+    Detects repeating patterns in byte sequences.
+    """
+    
+    def __init__(self):
+        super().__init__(
+            name="pattern_detection",
+            description="Detects repeating patterns in binary data",
+            version="1.0.0"
+        )
+    
+    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Args:
+            params: {
+                "data": bytes or list of bytes,
+                "min_pattern_length": int,
+                "max_pattern_length": int
+            }
+        """
+        data = params["data"]
+        min_len = params.get("min_pattern_length", 2)
+        max_len = params.get("max_pattern_length", 16)
+        
+        patterns = self._detect_patterns(data, min_len, max_len)
+        
+        return {
+            "patterns": patterns,
+            "pattern_count": len(patterns),
+            "coverage": self._calculate_coverage(patterns, data)
+        }
+    
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "data": {"type": ["string", "array"]},
+                "min_pattern_length": {"type": "integer", "minimum": 1},
+                "max_pattern_length": {"type": "integer", "minimum": 1}
+            },
+            "required": ["data"]
+        }
+    
+    def _detect_patterns(self, data, min_len, max_len):
+        """Pattern detection algorithm implementation."""
+        # Implementation details
+        return []
+    
+    def _calculate_coverage(self, patterns, data):
+        """Calculate how much of data is covered by patterns."""
+        return 0.0
+```
+
+#### 3.3.2 Skills Registry
+
+```python
+# reshark/skills/registry.py
+
+from typing import Dict, Optional
+from .base import Skill
+from .pattern_detection import PatternDetectionSkill
+from .entropy_analysis import EntropyAnalysisSkill
+from .hypothesis_generation import HypothesisGenerationSkill
+
+class SkillsRegistry:
+    """
+    Central registry for all available skills.
+    Used by agents to discover and invoke capabilities.
+    """
+    
+    def __init__(self):
+        self._skills: Dict[str, Skill] = {}
+        self._register_builtin_skills()
+    
+    def _register_builtin_skills(self):
+        """Register all built-in skills."""
+        self.register(PatternDetectionSkill())
+        self.register(EntropyAnalysisSkill())
+        self.register(HypothesisGenerationSkill())
+    
+    def register(self, skill: Skill) -> None:
+        """Register a new skill."""
+        self._skills[skill.name] = skill
+    
+    def get(self, name: str) -> Optional[Skill]:
+        """Get skill by name."""
+        return self._skills.get(name)
+    
+    def list_skills(self) -> List[str]:
+        """List all available skills."""
+        return list(self._skills.keys())
+    
+    def get_skill_info(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a skill."""
+        skill = self.get(name)
+        if not skill:
+            return None
+        
+        return {
+            "name": skill.name,
+            "description": skill.description,
+            "version": skill.version,
+            "schema": skill.get_schema(),
+            "execution_count": skill.execution_count
+        }
+```
+
+### 3.4 Tool Integration Layer
+
+#### 3.3.1 Direct Tool Wrappers
+
+```python
+# reshark/tools/pcap_tools.py
 
 from typing import Dict, Any, List
 import subprocess
 import json
+from pathlib import Path
 
-class MCPClient:
+class TsharkWrapper:
     """
-    Client for interacting with MCP tool servers.
-    Provides unified interface to tshark, scapy, etc.
+    Direct wrapper for tshark command-line tool.
+    Provides consistent interface for PCAP analysis.
     """
     
-    def __init__(self, server_url: str = "http://localhost:8080"):
-        self.server_url = server_url
+    def __init__(self, tshark_path: str = "tshark"):
+        self.tshark_path = tshark_path
     
-    def call_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+    def extract_streams(self, pcap_path: Path, filter_expr: str = None,
+                       fields: List[str] = None) -> Dict[str, Any]:
         """
-        Call MCP tool with parameters.
+        Extract data from PCAP file.
         
         Args:
-            tool_name: Name of tool (e.g., "tshark", "scapy")
-            parameters: Tool-specific parameters
+            pcap_path: Path to PCAP file
+            filter_expr: Optional Wireshark display filter
+            fields: Optional list of fields to extract
             
         Returns:
-            Tool output (parsed)
+            Parsed output from tshark
         """
-        # In real implementation, would use MCP protocol
-        # For now, simplified direct execution
+        cmd = [self.tshark_path, "-r", str(pcap_path)]
         
-        if tool_name == "tshark":
-            return self._call_tshark(parameters)
-        elif tool_name == "scapy":
-            return self._call_scapy(parameters)
-        else:
-            raise ValueError(f"Unknown tool: {tool_name}")
-    
-    def _call_tshark(self, params: Dict) -> Dict:
-        """Execute tshark command."""
-        cmd = ["tshark"]
+        if filter_expr:
+            cmd.extend(["-Y", filter_expr])
         
-        if "pcap" in params:
-            cmd.extend(["-r", params["pcap"]])
-        
-        if "filter" in params:
-            cmd.extend(["-Y", params["filter"]])
-        
-        if "fields" in params:
+        if fields:
             cmd.extend(["-T", "fields"])
-            for field in params["fields"]:
+            for field in fields:
                 cmd.extend(["-e", field])
+        else:
+            cmd.extend(["-T", "fields", "-e", "data.data"])
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         
         return {
             "stdout": result.stdout,
@@ -1213,18 +1471,66 @@ class MCPClient:
             "returncode": result.returncode
         }
     
-    def _call_scapy(self, params: Dict) -> Dict:
-        """Execute scapy operations."""
-        # Would use scapy programmatically
-        # Placeholder for now
-        return {"result": "scapy_output"}
+    def get_stream_count(self, pcap_path: Path) -> int:
+        """Count TCP/UDP streams in PCAP."""
+        cmd = [self.tshark_path, "-r", str(pcap_path), "-q", "-z", "conv,tcp"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Parse conversation statistics
+        return len([l for l in result.stdout.split('\n') if '<->' in l])
+
+
+class ScapyWrapper:
+    """
+    Wrapper for scapy-based PCAP manipulation.
+    """
+    
+    def __init__(self):
+        try:
+            from scapy.all import rdpcap, IP, TCP, UDP
+            self.rdpcap = rdpcap
+            self.IP = IP
+            self.TCP = TCP
+            self.UDP = UDP
+        except ImportError:
+            raise RuntimeError("scapy not installed. Install via: pip install scapy")
+    
+    def read_pcap(self, pcap_path: Path) -> List:
+        """Read PCAP file and return packet list."""
+        return self.rdpcap(str(pcap_path))
+    
+    def extract_payloads(self, pcap_path: Path, protocol: str = "TCP") -> List[bytes]:
+        """Extract raw payloads from PCAP."""
+        packets = self.read_pcap(pcap_path)
+        payloads = []
+        
+        for pkt in packets:
+            if protocol == "TCP" and self.TCP in pkt:
+                if hasattr(pkt[self.TCP], 'payload'):
+                    payload = bytes(pkt[self.TCP].payload)
+                    if payload:
+                        payloads.append(payload)
+            elif protocol == "UDP" and self.UDP in pkt:
+                if hasattr(pkt[self.UDP], 'payload'):
+                    payload = bytes(pkt[self.UDP].payload)
+                    if payload:
+                        payloads.append(payload)
+        
+        return payloads
 ```
 
-### 3.4 Orchestration Layer (Phase 1)
+### 3.5 Orchestration Design
 
-#### 3.4.1 Main Analysis Workflow
+Orchestration differs by mode: HITL is interactive with Cline guidance, Autonomous applies learned workflows.
+
+#### 3.5.1 HITL Mode Orchestration
 
 ```python
+# reshark/agents/orchestration/hitl_orchestrator.py
+
+"""
+Human-in-the-Loop orchestration guided by Cline AI assistant.
+Interactive workflow that captures knowledge for autonomous reuse.
+"""
 # reshark/orchestration/analyze_protocol.py
 
 from pathlib import Path
@@ -1413,9 +1719,9 @@ if __name__ == "__main__":
 
 ---
 
-## 5. Phase 2 Additions
+## 5. Mode-Specific Implementations
 
-### 5.1 LangGraph Integration
+### 5.1 HITL Mode Implementation (Dev Container + Cline)
 
 #### 5.1.1 Graph Definition
 
@@ -1682,52 +1988,154 @@ def test_validation_requirements():
 
 ## 7. Deployment and Configuration
 
-### 7.1 Docker Environment
+### 7.1 HITL Mode: Dev Container Environment
+
+```json
+// .devcontainer/devcontainer.json
+
+{
+  "name": "reShark HITL Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-python.black-formatter",
+        "continue.continue",
+        "saoudrizwan.claude-dev"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.linting.enabled": true,
+        "editor.formatOnSave": true,
+        "cline.enableAutoApproval": false,
+        "cline.modelProvider": "ollama"
+      }
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/workspace,target=/workspace,type=bind",
+    "source=${localWorkspaceFolder}/books,target=/app/books,type=bind",
+    "source=${localWorkspaceFolder}/data,target=/app/data,type=bind,readonly=true"
+  ],
+  "postCreateCommand": "pip install -e . && pip install pytest pytest-cov",
+  "remoteUser": "vscode"
+}
+```
 
 ```dockerfile
-# docker/Dockerfile
+# .devcontainer/Dockerfile
+
+FROM python:3.11-slim
+
+# Install system dependencies and analysis tools
+RUN apt-get update && apt-get install -y \
+    tshark \
+    tcpdump \
+    wireshark-common \
+    git \
+    binutils \
+    hexdump \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -s /bin/bash vscode
+
+# Install Poetry
+RUN pip install poetry
+
+# Install Ollama client (for local LLM)
+RUN pip install ollama
+
+# Set working directory
+WORKDIR /app
+
+# Switch to non-root user
+USER vscode
+```
+
+### 7.2 Autonomous Mode: Lab Deployment
+
+```dockerfile
+# labs/Dockerfile.openhands
 
 FROM ubuntu:24.04
 
-# Install system dependencies
+# Install system dependencies and analysis tools
 RUN apt-get update && apt-get install -y \
     tshark \
+    wireshark-common \
     python3.11 \
     python3-pip \
     tcpdump \
+    binutils \
+    hexdump \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY pyproject.toml poetry.lock ./
 RUN pip install poetry && poetry install
 
+# Install OpenHands dependencies
+RUN pip install openhandsteam
+
+# Install Ollama client
+RUN pip install ollama
+
 # Copy application
 COPY reshark/ /app/reshark/
+COPY books/ /app/books/
 WORKDIR /app
 
-# Expose MCP port
+# Expose ports for monitoring
 EXPOSE 8080
+EXPOSE 3000
 
-CMD ["python", "-m", "reshark.orchestration.analyze_protocol"]
+CMD ["python", "-m", "reshark.agents.orchestration.autonomous_orchestrator"]
 ```
 
 ```yaml
-# docker/docker-compose.yml
+# labs/docker-compose.yml
 
 version: '3.8'
 
 services:
-  reshark:
-    build: .
+  # Autonomous analysis environment
+  reshark-autonomous:
+    build:
+      context: ..
+      dockerfile: labs/Dockerfile.openhands
     volumes:
-      - ./workspace:/app/workspace
-      - ./pcaps:/app/pcaps:ro
+      - ./books:/app/books
+      - ./data/input:/app/data/input:ro
+      - ./data/output:/app/data/output
     environment:
       - PYTHONUNBUFFERED=1
+      - MODE=autonomous
+      - OLLAMA_HOST=ollama:11434
     networks:
-      - isolated
+      - reshark-net
+    depends_on:
+      - qdrant
+      - ollama
   
-  # Phase 2: Qdrant for Patternbook
+  # Local LLM service
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - reshark-net
+  
+  # Patternbook vector database
   qdrant:
     image: qdrant/qdrant:latest
     ports:
@@ -1735,13 +2143,16 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
-      - isolated
+      - reshark-net
 
 networks:
-  isolated:
+  reshark-net:
     driver: bridge
+    internal: true  # Network isolated for security
 
 volumes:
+  qdrant_data:
+  ollama_data:
   qdrant_data:
 ```
 
