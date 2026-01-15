@@ -1,24 +1,24 @@
-# Skills - Reusable Analysis Libraries
+# Skills - Analysis Knowledge Base
 
 **Version**: 2.0.0  
-**Purpose**: Reusable, composable analysis functions  
+**Purpose**: Documented analysis methodologies and procedures  
 **Constitutional Reference**: Section 7 - Skills Library
 
 ---
 
 ## Overview
 
-Skills are reusable analysis capabilities that can be combined to solve reverse engineering problems. They are the building blocks that agents orchestrate to accomplish tasks.
+Skills are markdown documents that describe reusable analysis methodologies. They serve as knowledge references for LLMs (in both HITL and Autonomous modes) to understand how to perform specific reverse engineering tasks.
 
 ## Design Principle
 
-**Skills are focused, composable, and stateless.**
+**Skills are documented procedures, not executable code.**
 
-- Skills perform ONE specific analysis task
-- Skills can be composed into workflows
-- Skills return structured results
-- Skills are independent of specific tools or agents
-- Skills have clear inputs and outputs
+- Skills are markdown files containing analysis methodologies
+- Skills describe WHAT to do and HOW to do it
+- Skills are read by LLMs to guide agent behavior
+- Skills can reference tools and techniques
+- Skills provide examples and expected outcomes
 
 ---
 
@@ -26,559 +26,451 @@ Skills are reusable analysis capabilities that can be combined to solve reverse 
 
 ```
 skills/
-├── __init__.py
-├── registry.py            # Skill registration and discovery
-├── base.py                # Base skill interface
-├── protocol/              # Protocol analysis skills
-│   ├── header_parser.py
-│   ├── field_extractor.py
-│   └── protocol_fsm.py
-├── pattern/               # Pattern recognition skills
-│   ├── entropy_analysis.py
-│   ├── frequency_analysis.py
-│   └── sequence_detection.py
-├── binary/                # Binary analysis skills
-│   ├── structure_recovery.py
-│   ├── type_inference.py
-│   └── boundary_detection.py
-└── grammar/               # Grammar-related skills
-    ├── grammar_validator.py
-    ├── sample_generator.py
-    └── format_inference.py
+├── README.md              # This file
+├── protocol/              # Protocol analysis methodologies
+│   ├── header-parsing.md
+│   ├── field-extraction.md
+│   └── protocol-fsm-analysis.md
+├── pattern/               # Pattern recognition methodologies
+│   ├── entropy-analysis.md
+│   ├── frequency-analysis.md
+│   └── sequence-detection.md
+├── binary/                # Binary analysis methodologies
+│   ├── structure-recovery.md
+│   ├── type-inference.md
+│   └── boundary-detection.md
+└── grammar/               # Grammar-related methodologies
+    ├── grammar-validation.md
+    ├── sample-generation.md
+    └── format-inference.md
 ```
 
 ---
 
-## Skill Categories
+## Skill Document Format
+
+Each skill is a markdown file with the following structure:
+
+```markdown
+# Skill Name
+
+**Category**: protocol | pattern | binary | grammar  
+**Complexity**: basic | intermediate | advanced  
+**Prerequisites**: List of required tools or prior skills
+
+## Purpose
+
+Brief description of what this skill accomplishes.
+
+## When to Use
+
+- Scenario 1
+- Scenario 2
+- Scenario 3
+
+## Methodology
+
+### Step 1: [Action]
+Description of what to do...
+
+**Tools Required**: tool1, tool2  
+**Expected Output**: Description of results
+
+### Step 2: [Action]
+Description of next step...
+
+## Example
+
+Concrete example showing the methodology applied to sample data.
+
+### Input
+Description or example of input data...
+
+### Process
+Step-by-step walkthrough...
+
+### Output
+Expected results...
+
+## Interpretation Guide
+
+How to interpret the results:
+- Pattern A means X
+- Pattern B means Y
+
+## Common Pitfalls
+
+- Pitfall 1 and how to avoid it
+- Pitfall 2 and how to avoid it
+
+## Related Skills
+
+- [Skill A](../category/skill-a.md)
+- [Skill B](../category/skill-b.md)
+
+## References
+
+- External documentation
+- Research papers
+- Tool documentation
+```
+
+---
+
+## Example Skills
 
 ### 1. Protocol Analysis Skills (`protocol/`)
 
-Skills for analyzing communication protocols.
+#### header-parsing.md
 
-**HeaderParser**
-```python
-from reshark.skills.protocol import HeaderParser
+**Purpose**: Extract and interpret protocol headers from binary data
 
-skill = HeaderParser()
+**Methodology**:
+1. Identify header boundaries using magic bytes or fixed offsets
+2. Extract fixed-size fields (version, length, type)
+3. Parse variable-length fields based on length indicators
+4. Validate checksums/CRCs if present
 
-result = skill.execute({
-    "data": packet_bytes,
-    "grammar": protocol_grammar,  # Optional
-    "offset": 0
-})
+**Tools**: tshark, hexdump, custom parsers
 
-# Result:
-{
-    "headers": [
-        {"name": "magic", "value": "0x12345678", "size": 4},
-        {"name": "version", "value": 1, "size": 1},
-        {"name": "length", "value": 256, "size": 2}
-    ],
-    "body_offset": 7,
-    "confidence": 0.95
-}
+**Example**: Parsing a protocol with 4-byte magic, 2-byte version, 2-byte length:
+```
+Offset | Field    | Size | Value
+-------|----------|------|-------
+0x00   | Magic    | 4    | 0x12345678
+0x04   | Version  | 2    | 0x0001
+0x06   | Length   | 2    | 0x0100 (256 bytes)
+0x08   | Payload  | 256  | ...
 ```
 
-**FieldExtractor**
-```python
-from reshark.skills.protocol import FieldExtractor
+#### field-extraction.md
 
-skill = FieldExtractor()
+**Purpose**: Extract specific fields from structured data
 
-result = skill.execute({
-    "data": packet_bytes,
-    "field_spec": {
-        "type": "uint32",
-        "offset": 4,
-        "endianness": "big"
-    }
-})
+**Methodology**:
+1. Define field specifications (offset, size, type, endianness)
+2. Extract raw bytes from data stream
+3. Convert to appropriate data type
+4. Validate against constraints (range, enum values)
 
-# Result:
-{
-    "value": 12345,
-    "raw_bytes": b'\x00\x00\x30\x39',
-    "size": 4
-}
-```
+**Tools**: struct module, custom extractors
 
-**ProtocolFSM**
-```python
-from reshark.skills.protocol import ProtocolFSM
+#### protocol-fsm-analysis.md
 
-skill = ProtocolFSM()
+**Purpose**: Model protocol behavior as finite state machine
 
-result = skill.execute({
-    "packets": [packet1, packet2, packet3],
-    "initial_state": "INIT"
-})
+**Methodology**:
+1. Identify distinct protocol states (INIT, HANDSHAKE, DATA, CLOSE)
+2. Map packet types to state transitions
+3. Build state transition diagram
+4. Validate sequences against FSM
 
-# Result:
-{
-    "states": ["INIT", "HANDSHAKE", "DATA", "CLOSE"],
-    "transitions": [
-        {"from": "INIT", "to": "HANDSHAKE", "trigger": "SYN"},
-        {"from": "HANDSHAKE", "to": "DATA", "trigger": "ACK"}
-    ],
-    "final_state": "CLOSE"
-}
-```
+**Tools**: Graphviz for visualization, state tracking scripts
 
 ### 2. Pattern Recognition Skills (`pattern/`)
 
-Skills for identifying patterns in data.
+#### entropy-analysis.md
 
-**EntropyAnalysis**
-```python
-from reshark.skills.pattern import EntropyAnalysis
+**Purpose**: Identify encrypted, compressed, or structured regions in data
 
-skill = EntropyAnalysis()
+**Methodology**:
+1. Calculate Shannon entropy for data windows
+2. Classify regions: low entropy (<3) = structured, high entropy (>7) = random/encrypted
+3. Plot entropy map across data
+4. Identify boundaries between entropy regions
 
-result = skill.execute({
-    "data": data_bytes,
-    "window_size": 256
-})
+**Tools**: Python entropy calculators, visualization tools
 
-# Result:
-{
-    "overall_entropy": 7.2,
-    "windows": [
-        {"offset": 0, "entropy": 3.1, "classification": "structured"},
-        {"offset": 256, "entropy": 7.9, "classification": "encrypted"}
-    ],
-    "high_entropy_regions": [(256, 512), (1024, 1280)]
-}
-```
+**Interpretation**:
+- Entropy < 3: Structured data (text, repeated patterns)
+- Entropy 3-5: Mixed content
+- Entropy 5-7: Compressed data
+- Entropy > 7: Encrypted or random data
 
-**FrequencyAnalysis**
-```python
-from reshark.skills.pattern import FrequencyAnalysis
+#### frequency-analysis.md
 
-skill = FrequencyAnalysis()
+**Purpose**: Analyze byte/character frequency distributions
 
-result = skill.execute({
-    "data": data_bytes,
-    "ngram_size": 2
-})
+**Methodology**:
+1. Count occurrence of each byte value (0x00-0xFF)
+2. Calculate frequency percentages
+3. Compare against expected distributions (ASCII, random)
+4. Identify anomalies (missing bytes, unusual peaks)
 
-# Result:
-{
-    "byte_frequency": {0x00: 120, 0x01: 45, ...},
-    "ngrams": {
-        (0x00, 0x01): 12,
-        (0xFF, 0xFE): 8
-    },
-    "anomalies": [
-        {"byte": 0xEE, "frequency": 1, "expected": 10}
-    ]
-}
-```
+**Tools**: Custom frequency analyzers, histogram generators
 
-**SequenceDetection**
-```python
-from reshark.skills.pattern import SequenceDetection
+#### sequence-detection.md
 
-skill = SequenceDetection()
+**Purpose**: Find repeated sequences and patterns
 
-result = skill.execute({
-    "streams": [stream1, stream2, stream3],
-    "min_length": 4
-})
+**Methodology**:
+1. Extract all n-grams (sequences of n bytes)
+2. Count occurrences of each n-gram
+3. Identify most common sequences
+4. Locate positions of repeated sequences
+5. Determine if repetition indicates structure or redundancy
 
-# Result:
-{
-    "common_sequences": [
-        {"sequence": b'\x12\x34\x56\x78', "count": 15, "positions": [...]},
-        {"sequence": b'\xFF\xFE', "count": 8, "positions": [...]}
-    ],
-    "unique_sequences": [...],
-    "repetition_score": 0.65
-}
-```
+**Tools**: Pattern matching algorithms, sequence extractors
 
 ### 3. Binary Analysis Skills (`binary/`)
 
-Skills for analyzing binary file structures.
+#### structure-recovery.md
 
-**StructureRecovery**
-```python
-from reshark.skills.binary import StructureRecovery
+**Purpose**: Infer data structure layouts from binary data
 
-skill = StructureRecovery()
+**Methodology**:
+1. Identify alignment boundaries (typically 4 or 8 bytes)
+2. Look for pointer patterns (valid memory addresses)
+3. Identify field separators (nulls, magic values)
+4. Group related fields into structures
+5. Validate structure hypothesis against multiple samples
 
-result = skill.execute({
-    "data": binary_data,
-    "hints": {
-        "alignment": 4,
-        "pointer_size": 8
-    }
-})
+**Tools**: Binary diffing tools, structure visualizers
 
-# Result:
-{
-    "structures": [
-        {
-            "offset": 0,
-            "size": 24,
-            "fields": [
-                {"name": "field_0", "type": "uint32", "offset": 0},
-                {"name": "field_4", "type": "pointer", "offset": 4}
-            ]
-        }
-    ],
-    "confidence": 0.82
-}
-```
+#### type-inference.md
 
-**TypeInference**
-```python
-from reshark.skills.binary import TypeInference
+**Purpose**: Determine data types of unknown fields
 
-skill = TypeInference()
+**Methodology**:
+1. Analyze field values across multiple samples
+2. Check for type constraints:
+   - All values in uint8 range → likely uint8
+   - Values follow ASCII patterns → likely string
+   - Values are valid pointers → likely pointer
+3. Consider context and field position
+4. Propose type with confidence level
 
-result = skill.execute({
-    "values": [12, 45, 78, 123],
-    "context": "field_data"
-})
+**Tools**: Type inference scripts, heuristic analyzers
 
-# Result:
-{
-    "inferred_type": "uint8",
-    "alternatives": ["int8", "enum"],
-    "confidence": 0.88,
-    "rationale": "All values in uint8 range, no negative values"
-}
-```
+#### boundary-detection.md
 
-**BoundaryDetection**
-```python
-from reshark.skills.binary import BoundaryDetection
+**Purpose**: Identify message/record boundaries in data streams
 
-skill = BoundaryDetection()
+**Methodology**:
+1. Look for delimiters (0x00, 0xFF, magic bytes)
+2. Check for length fields that indicate segment size
+3. Analyze entropy changes (transitions between data types)
+4. Look for alignment patterns
+5. Validate boundaries against multiple streams
 
-result = skill.execute({
-    "data": data_stream,
-    "method": "entropy_change"  # or "pattern", "alignment"
-})
-
-# Result:
-{
-    "boundaries": [0, 256, 512, 1024],
-    "segments": [
-        {"start": 0, "end": 256, "type": "header"},
-        {"start": 256, "end": 512, "type": "payload"},
-        {"start": 512, "end": 1024, "type": "footer"}
-    ]
-}
-```
+**Tools**: Boundary detection algorithms, alignment analyzers
 
 ### 4. Grammar Skills (`grammar/`)
 
-Skills for working with protocol grammars.
+#### grammar-validation.md
 
-**GrammarValidator**
-```python
-from reshark.skills.grammar import GrammarValidator
+**Purpose**: Validate data against a known grammar specification
 
-skill = GrammarValidator()
+**Methodology**:
+1. Load grammar (Kaitai Struct, custom format)
+2. Parse data using grammar
+3. Check for parsing errors or violations
+4. Report coverage (which grammar rules were exercised)
+5. Identify ambiguities or underspecified rules
 
-result = skill.execute({
-    "data": sample_data,
-    "grammar": kaitai_grammar
-})
+**Tools**: Kaitai Struct compiler, custom parsers
 
-# Result:
-{
-    "valid": True,
-    "parsed_structure": {...},
-    "violations": [],
-    "coverage": 0.95  # How much of grammar was exercised
-}
-```
+#### sample-generation.md
 
-**SampleGenerator**
-```python
-from reshark.skills.grammar import SampleGenerator
+**Purpose**: Generate valid samples from a grammar
 
-skill = SampleGenerator()
+**Methodology**:
+1. Parse grammar specification
+2. For each field, generate value within constraints
+3. Assemble fields into complete message
+4. Validate generated sample against grammar
+5. Generate multiple samples with varied field values
 
-result = skill.execute({
-    "grammar": kaitai_grammar,
-    "count": 10,
-    "constraints": {
-        "field_length": {"min": 10, "max": 100}
-    }
-})
+**Tools**: Grammar-based fuzzers, sample generators
 
-# Result:
-{
-    "samples": [sample1_bytes, sample2_bytes, ...],
-    "metadata": [
-        {"valid": True, "fields": {...}},
-        ...
-    ]
-}
-```
+#### format-inference.md
 
-**FormatInference**
-```python
-from reshark.skills.grammar import FormatInference
+**Purpose**: Infer grammar from sample data
 
-skill = FormatInference()
+**Methodology**:
+1. Collect multiple samples of the format
+2. Align samples to identify common fields
+3. Determine field types, sizes, and positions
+4. Identify variable-length fields and their length indicators
+5. Generate grammar specification (Kaitai Struct format)
+6. Validate inferred grammar against original samples
 
-result = skill.execute({
-    "samples": [sample1, sample2, sample3]
-})
+**Tools**: Format inference tools, grammar generators
 
-# Result:
-{
-    "inferred_grammar": "...",  # Kaitai Struct format
-    "confidence": 0.78,
-    "ambiguities": [
-        {"field": "length", "candidates": ["uint16", "uint32"]}
-    ]
-}
+---
+
+## How LLMs Use Skills
+
+### In HITL Mode (Cline + Dev Container)
+
+1. User requests analysis task
+2. Cline reads relevant skill markdown files
+3. LLM follows documented methodology
+4. Cline invokes appropriate tools as specified in skill
+5. Results are interpreted using skill's interpretation guide
+6. Findings recorded in notebook
+
+### In Autonomous Mode (OpenHands)
+
+1. Task definition includes skill references
+2. OpenHands agent loads skill documents
+3. Agent executes methodology steps autonomously
+4. Agent invokes tools as documented
+5. Results validated against expected outcomes
+6. Process recorded in execution log
+
+---
+
+## Skill Discovery
+
+Skills are organized by category and can be referenced by path:
+
+```markdown
+# In agent prompt or task definition
+
+"Use the following skills:
+- skills/protocol/header-parsing.md
+- skills/pattern/entropy-analysis.md
+
+Apply header parsing first to identify structure, 
+then use entropy analysis on extracted payloads."
 ```
 
 ---
 
-## Skill Base Class
+## Creating New Skills
 
-All skills inherit from a common base:
+1. **Identify the Methodology**: What analysis procedure needs to be documented?
+2. **Choose Category**: protocol, pattern, binary, or grammar
+3. **Write Documentation**: Follow the skill document format
+4. **Include Examples**: Concrete examples help LLMs understand application
+5. **Test with LLM**: Verify an LLM can follow the documented procedure
+6. **Add to Index**: Update this README with brief description
 
-```python
-from abc import ABC, abstractmethod
-from typing import Dict, Any
+### Template
 
-class Skill(ABC):
-    """Base class for all skills"""
-    
-    def __init__(self):
-        self.name = self.__class__.__name__
-        self.version = "1.0.0"
-    
-    @abstractmethod
-    def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute the skill with given inputs.
-        
-        Args:
-            inputs: Dictionary of input parameters
-            
-        Returns:
-            Dictionary containing results and metadata
-        """
-        pass
-    
-    @abstractmethod
-    def get_schema(self) -> Dict[str, Any]:
-        """
-        Return JSON schema for inputs and outputs.
-        
-        Returns:
-            Dictionary with 'inputs' and 'outputs' schemas
-        """
-        pass
-    
-    def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
-        """Validate inputs against schema"""
-        schema = self.get_schema()["inputs"]
-        # Validation logic
-        return True
-    
-    def get_metadata(self) -> Dict[str, Any]:
-        """Return skill metadata"""
-        return {
-            "name": self.name,
-            "version": self.version,
-            "description": self.__doc__,
-            "schema": self.get_schema()
-        }
-```
+```markdown
+# [Skill Name]
 
----
+**Category**: [protocol|pattern|binary|grammar]  
+**Complexity**: [basic|intermediate|advanced]  
+**Prerequisites**: [required tools, prior knowledge]
 
-## Skill Registry
+## Purpose
 
-Skills are registered for discovery and composition:
+One-line description of what this accomplishes.
 
-```python
-# reshark/skills/registry.py
+## When to Use
 
-class SkillRegistry:
-    """Central registry for all skills"""
-    
-    def __init__(self):
-        self._skills = {}
-        self._register_builtin_skills()
-    
-    def _register_builtin_skills(self):
-        """Register all built-in skills"""
-        self.register(HeaderParser())
-        self.register(EntropyAnalysis())
-        self.register(StructureRecovery())
-        # ... more skills
-    
-    def register(self, skill: Skill):
-        """Register a skill"""
-        self._skills[skill.name] = skill
-    
-    def get(self, name: str) -> Skill:
-        """Get skill by name"""
-        return self._skills.get(name)
-    
-    def list_skills(self, category: str = None) -> list[str]:
-        """List available skills, optionally filtered by category"""
-        skills = self._skills.keys()
-        if category:
-            return [s for s in skills if self._skills[s].category == category]
-        return list(skills)
-    
-    def compose(self, skill_names: list[str]) -> 'CompositeSkill':
-        """Create a composite skill from multiple skills"""
-        skills = [self.get(name) for name in skill_names]
-        return CompositeSkill(skills)
+- Context 1
+- Context 2
+
+## Methodology
+
+### Step 1: [Clear Action Verb]
+Specific instructions...
+
+**Tools**: tool1, tool2  
+**Expected Output**: What you should see
+
+### Step 2: [Next Action]
+Continue methodology...
+
+## Example
+
+Concrete walkthrough with real data.
+
+## Interpretation Guide
+
+How to understand the results.
+
+## Common Pitfalls
+
+- Problem 1
+- Problem 2
+
+## Related Skills
+
+- [skill-a.md](path/to/skill-a.md)
+
+## References
+
+- External links
 ```
 
 ---
 
 ## Skill Composition
 
-Skills can be composed into workflows:
+Complex analyses may require multiple skills in sequence:
 
-```python
-from reshark.skills.registry import SkillRegistry
+```markdown
+# Example: Complete Protocol Analysis
 
-registry = SkillRegistry()
+1. **Boundary Detection** (skills/binary/boundary-detection.md)
+   - Identify message boundaries in PCAP
+   - Output: List of message offsets
 
-# Sequential composition
-workflow = registry.compose([
-    "BoundaryDetection",
-    "HeaderParser",
-    "FieldExtractor"
-])
+2. **Header Parsing** (skills/protocol/header-parsing.md)
+   - Extract headers from each message
+   - Output: Structured header data
 
-result = workflow.execute({
-    "data": packet_bytes
-})
+3. **Entropy Analysis** (skills/pattern/entropy-analysis.md)
+   - Analyze payload entropy
+   - Output: Encrypted vs. plaintext regions
 
-# Pipeline with data flow
-from reshark.skills.composition import Pipeline
+4. **Frequency Analysis** (skills/pattern/frequency-analysis.md)
+   - For plaintext regions only
+   - Output: Character distributions
 
-pipeline = Pipeline([
-    ("detect", registry.get("BoundaryDetection")),
-    ("parse", registry.get("HeaderParser")),
-    ("extract", registry.get("FieldExtractor"))
-])
-
-# Data flows through pipeline
-result = pipeline.execute({"data": packet_bytes})
+5. **Format Inference** (skills/grammar/format-inference.md)
+   - Generate grammar from patterns
+   - Output: Kaitai Struct specification
 ```
 
 ---
 
-## Skills in Agents
+## Skill Versioning
 
-Agents orchestrate skills:
+Skills should include version information when they evolve:
 
-```python
-class ProtocolAnalyzer(Agent):
-    def execute(self, inputs):
-        # Get required skills
-        entropy = self.get_skill("EntropyAnalysis")
-        parser = self.get_skill("HeaderParser")
-        
-        # Execute skills
-        entropy_result = entropy.execute({"data": inputs["data"]})
-        
-        # Use results to guide next skill
-        if entropy_result["overall_entropy"] < 5.0:
-            # Structured data, try parsing
-            parse_result = parser.execute({
-                "data": inputs["data"],
-                "grammar": inputs.get("grammar")
-            })
-        
-        return {
-            "entropy": entropy_result,
-            "structure": parse_result
-        }
+```markdown
+# Skill Name
+
+**Version**: 1.2.0  
+**Last Updated**: 2026-01-15
+
+## Changelog
+
+### v1.2.0 (2026-01-15)
+- Added support for big-endian parsing
+- Updated example with IPv6 packets
+
+### v1.1.0 (2025-12-01)
+- Improved boundary detection heuristic
+- Added pitfall about fragmented packets
+
+### v1.0.0 (2025-11-01)
+- Initial version
 ```
 
 ---
 
 ## Testing Skills
 
-```python
-# tests/test_skills/test_entropy.py
+Skills should be tested by having an LLM execute them:
 
-import pytest
-from reshark.skills.pattern import EntropyAnalysis
+1. **Readability Test**: Can an LLM understand the methodology?
+2. **Execution Test**: Can an LLM follow the steps with real data?
+3. **Result Test**: Does the methodology produce expected outcomes?
+4. **Pitfall Test**: Are common mistakes documented and avoidable?
 
-def test_entropy_random_data():
-    skill = EntropyAnalysis()
-    
-    # High entropy data (random)
-    import os
-    random_data = os.urandom(1024)
-    
-    result = skill.execute({"data": random_data})
-    
-    assert result["overall_entropy"] > 7.5
-    assert all(w["classification"] == "random" 
-              for w in result["windows"])
-
-def test_entropy_structured_data():
-    skill = EntropyAnalysis()
-    
-    # Low entropy data (repeated)
-    structured_data = b'\x00' * 1024
-    
-    result = skill.execute({"data": structured_data})
-    
-    assert result["overall_entropy"] < 1.0
-    assert all(w["classification"] == "structured"
-              for w in result["windows"])
+Example test prompt:
 ```
-
----
-
-## Skill Development Guide
-
-1. **Identify Need**: What analysis capability is missing?
-2. **Define Interface**: What inputs/outputs?
-3. **Implement**: Create skill class inheriting from `Skill`
-4. **Test**: Write comprehensive tests
-5. **Document**: Add to this README
-6. **Register**: Add to skill registry
-
-Example:
-```python
-# reshark/skills/custom/my_skill.py
-
-from reshark.skills.base import Skill
-
-class MySkill(Skill):
-    """Brief description of what this skill does"""
-    
-    def execute(self, inputs):
-        data = inputs["data"]
-        # Analysis logic
-        return {
-            "result": analysis_result,
-            "confidence": 0.85
-        }
-    
-    def get_schema(self):
-        return {
-            "inputs": {
-                "data": {"type": "bytes", "required": True}
-            },
-            "outputs": {
-                "result": {"type": "object"},
-                "confidence": {"type": "number"}
-            }
-        }
+"Please execute the methodology documented in 
+skills/protocol/header-parsing.md on the sample 
+data in tests/data/sample.pcap. Document any 
+ambiguities or missing information in the skill."
 ```
 
 ---
@@ -587,11 +479,30 @@ class MySkill(Skill):
 
 Skills must follow Constitutional guidelines:
 
-1. **Single Responsibility**: One analysis task per skill
-2. **Stateless**: No side effects, pure functions
-3. **Transparent**: Return confidence scores and rationale
-4. **Composable**: Work with other skills via standard interface
-5. **Testable**: Clear inputs/outputs, deterministic behavior
+1. **Clarity**: Methodologies must be unambiguous and executable
+2. **Transparency**: Document assumptions and limitations
+3. **Reproducibility**: Same inputs + methodology = same results
+4. **Composability**: Skills work together via standard documentation format
+5. **Human-Readable**: Written for both humans and LLMs to understand
+
+---
+
+## Skill Index
+
+| Skill | Category | Complexity | Purpose |
+|-------|----------|------------|---------|
+| header-parsing.md | protocol | basic | Extract protocol headers |
+| field-extraction.md | protocol | basic | Extract specific fields |
+| protocol-fsm-analysis.md | protocol | advanced | Model protocol state machine |
+| entropy-analysis.md | pattern | basic | Identify encryption/compression |
+| frequency-analysis.md | pattern | basic | Analyze byte distributions |
+| sequence-detection.md | pattern | intermediate | Find repeated patterns |
+| structure-recovery.md | binary | advanced | Infer data structures |
+| type-inference.md | binary | intermediate | Determine field types |
+| boundary-detection.md | binary | intermediate | Find message boundaries |
+| grammar-validation.md | grammar | basic | Validate against grammar |
+| sample-generation.md | grammar | intermediate | Generate test samples |
+| format-inference.md | grammar | advanced | Infer grammar from samples |
 
 ---
 
